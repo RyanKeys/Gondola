@@ -39,6 +39,8 @@ func main() {
 			fmt.Fprintln(os.Stderr, "health:", err)
 			os.Exit(1)
 		}
+	case "discover":
+		os.Exit(runDiscover(os.Args[2:]))
 	default:
 		usage()
 		os.Exit(2)
@@ -51,6 +53,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  gondola mode [--addr http://127.0.0.1:11435] [name]")
 	fmt.Fprintln(os.Stderr, "  gondola modes [--addr ...]")
 	fmt.Fprintln(os.Stderr, "  gondola health [--addr ...]")
+	fmt.Fprintln(os.Stderr, "  gondola discover [--timeout 300ms] [--port 11434] [--json] [--write-config dispatcher.yaml]")
 }
 
 // flagVal extracts --name value from args.

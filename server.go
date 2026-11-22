@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.1.0-poc"
+const version = "0.2.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
