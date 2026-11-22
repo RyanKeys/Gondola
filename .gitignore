@@ -1,0 +1,12 @@
+/gondola
+/gondola-*
+poc-fleet.yaml
+*.log
+mode.json
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+data/
+dispatcher.prod.yaml
+dispatcher-go.Dockerfile

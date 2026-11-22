@@ -1,0 +1,375 @@
+# gondola — Specification v0.1 
+
+A mode-aware routing proxy for multiple Ollama machines, written in Go as a
+single static binary. A client points at one endpoint; the dispatcher decides,
+per request, which PC/GPU serves it — waking that machine over Wake-on-LAN
+when the active mode allows it.
+
+This spec supersedes the running Python prototype (dispatcher v1.3).
+The prototype's routing semantics are proven in production on a live fleet;
+this spec keeps those semantics, generalizes modes from four hard-coded names
+into configuration, and re-implements in Go for distribution (one binary, no
+runtime, runs comfortably on a Raspberry Pi).
+
+---
+
+## 1. Purpose and scope
+
+### 1.1 Problem
+
+Homelabs commonly have two classes of machine:
+
+- an always-on, power-efficient box with a small GPU — right for a small
+  operator model, wrong for heavy work;
+- a powerful machine (often a gaming PC) that should sleep most of the day.
+
+Neither Ollama nor OpenAI-compatible clients can express "use this machine
+when I'm home, that machine when I'm away, and never wake the gaming PC
+during a benchmark." The dispatcher holds that policy in one place: the
+**mode**.
+
+### 1.2 v1 scope
+
+- Backends are **Ollama instances** (native `/api/*` plus the
+  OpenAI-compatible `/v1/*` surface Ollama itself exposes). The backend is
+  reached through a narrow internal interface (§5.4) so a non-Ollama backend
+  can be added later without touching routing; v1 ships Ollama only.
+- Two or more backends; exactly one active mode at a time.
+- Streaming passthrough for generation endpoints.
+- Wake-on-LAN for backends that declare a MAC address.
+
+### 1.3 Non-goals (v1)
+
+- Load balancing or round-robin between backends.
+- Putting a backend to sleep (the OS idle timer does that; the dispatcher
+  only wakes).
+- Model downloads or management (pull/delete stay with Ollama directly).
+- Multi-user auth on the proxy surface (see §10 for the admin surface).
+- A web UI. Mode switching is API/CLI only in v1.
+
+---
+
+## 2. Concepts
+
+**Backend** — one PC/GPU running Ollama. Declared in config with a name, a
+base URL, an optional Wake-on-LAN MAC, a default model, and optional
+model-family prefixes that pin matching requests to it.
+
+**Mode** — a named routing policy. A mode assigns, for each class of
+request, which backend is invoked, whether waking a sleeping backend is
+allowed, and optionally a time-to-live after which the dispatcher falls
+back to the configured default mode. Modes are **defined in configuration**,
+not hard-coded; §4.3 ships the four starter modes the prototype proved
+(home / away / test / dev) as ordinary config.
+
+**Role** — a stable name for a job (`brain`, `heavy`, `coder`, `utility`)
+that resolves to a concrete model in config. Clients may ask for a role
+instead of a model; the mode then decides which backend serves that role.
+
+**Request classes** (evaluated in §6 order): role requests, header-forced
+requests, model-family requests, and everything else (mode default).
+
+---
+
+## 3. Architecture
+
+- One Go binary (`gondola`), `net/http` reverse proxy; no
+  external services, no database.
+- State: the active mode + when it was set, in a small JSON file on disk
+  (path configurable). Everything else is config, loaded at start; mode
+  definitions are re-read on mode switch.
+- Concurrency: request handling is fully concurrent; wake attempts per
+  backend are coalesced behind a per-backend lock so 20 simultaneous
+  requests send one magic packet sequence, not 20.
+- The binary runs the same under systemd, Docker, or bare on Linux/macOS.
+  Host networking (or equivalent) is required for WoL broadcasts.
+
+---
+
+## 4. Configuration
+
+YAML file (`--config`, default `./dispatcher.yaml`), with environment
+variables overriding individual fields (prefix `DISPATCHER_`). Secrets are
+never part of config examples.
+
+### 4.1 Backends
+
+```yaml
+backends:
+  primary:                       # the always-on machine
+    url: http://192.168.1.10:11434
+    default_model: qwen3.5:9b
+    model_prefixes: [qwen2.5-coder]     # families pinned to this backend
+  secondary:                     # the wakeable machine
+    url: http://192.168.1.20:11434
+    mac: "AA:BB:CC:DD:EE:FF"            # enables Wake-on-LAN
+    wol_broadcasts: [192.168.1.255, 255.255.255.255]
+    default_model: qwen3:14b
+    model_prefixes: [qwen3:14b]
+```
+
+### 4.2 Roles
+
+```yaml
+roles:
+  brain:   hf.co/deepreinforce-ai/Ornith-1.0-9B-GGUF:Q4_K_M
+  heavy:   qwen3.6:35b-a3b
+  coder:   qwen3-coder:30b
+  utility: qwen3.5:4b
+```
+
+A role's value is normally a single model name. It may instead be a
+mapping with a `default` model and per-backend `overrides`, for fleets
+where the best model for a job differs by machine:
+
+```yaml
+roles:
+  heavy:
+    default: qwen3.6:35b-a3b
+    overrides:
+      secondary: hf.co/deepreinforce-ai/Ornith-1.0-35B-GGUF:Q4_K_M
+```
+
+Resolution (§6) picks the serving backend first (the mode's assignment);
+the served model is then that backend's override when one is set, else
+the role's default. Validation rejects a mapping with no default, an
+override naming an undefined backend, and an empty override model. The
+scalar form is exactly equivalent to a mapping with only a default, so
+existing configurations behave unchanged.
+
+### 4.3 Modes
+
+A mode assigns backends per request class. `default` is required; `roles`
+may override individual roles; `wake` gates WoL for the whole mode;
+`pin_default_model` rewrites any model to the chosen backend's default
+(the benchmark-isolation behaviour); `ttl` auto-returns to the default
+mode on expiry.
+
+```yaml
+default_mode: home
+modes:
+  home:
+    default: primary
+    wake: false
+  away:
+    default: secondary
+    wake: true
+  test:
+    default: primary
+    wake: false
+    pin_default_model: true
+  dev:
+    default: secondary
+    wake: true
+    ttl: 8h
+    roles:
+      brain: primary        # example: keep the operator brain on the
+                            # always-on box even while devving
+```
+
+Mode names are arbitrary strings from config. Switching to an undefined
+mode is an error (§7.2). This is the generalization over the prototype:
+the prototype's four modes become starter config, and a user with three
+machines or different habits defines their own (e.g. `guest`, `night`,
+`render`).
+
+### 4.4 Server
+
+```yaml
+server:
+  listen: 0.0.0.0:11435
+  state_file: /data/mode.json
+  wake_timeout: 150s          # how long to wait for a woken backend
+  admin_token: ""             # optional; see §10
+```
+
+---
+
+## 5. Backend behaviour
+
+### 5.1 Reachability
+
+A backend is "up" when `GET /api/version` returns 200 (2 s timeout). Health
+checks never wake a backend.
+
+### 5.2 Wake-on-LAN
+
+When a request routes to a backend that is down, has a MAC configured, and
+the active mode has `wake: true`: send the magic packet to each configured
+broadcast address, then poll reachability every 5 s (re-sending the packet
+every ~30 s) until `wake_timeout`. If the backend never comes up, the
+request fails with 502 (§8). If the mode has `wake: false`, a down backend
+fails immediately with 502 — the dispatcher must never wake a machine the
+mode says to leave alone.
+
+### 5.3 Model inventory
+
+`GET /api/tags` is answered by merging the tag lists of all *reachable*
+backends, without waking any. Per-backend duplicates are kept distinct by
+backend name in a dispatcher-specific field; the Ollama-shaped `models`
+array is the union.
+
+### 5.4 Backend interface (internal)
+
+Routing talks to backends through a small Go interface — base URL,
+reachability, tag list, and a proxied request — so a future non-Ollama
+backend (llama.cpp, vLLM) is an adapter, not a rewrite. v1 ships the
+Ollama adapter only.
+
+---
+
+## 6. Routing algorithm
+
+For each proxied request, in order:
+
+1. **Parse** the requested model from the JSON body (absent is allowed).
+2. **Role**: if the model equals a configured role name, the backend is
+   the mode's `roles` override for that role if set, else the mode
+   default; the served model is the role's per-backend override for
+   that backend (§4.2) if set, else the role's default model.
+3. **Header**: `X-Backend: <name>` forces that backend (unknown name →
+   400). The header is stripped before proxying.
+4. **Family pin**: if the model matches a backend's `model_prefixes`, that
+   backend serves it.
+5. **Mode default**: otherwise the mode's `default` backend serves it.
+6. **Served model** is then determined by the rewrite rules (§6.1), the
+   backend is woken if required and allowed (§5.2), and the request is
+   proxied with streaming.
+
+### 6.1 The pass-through rule (hard requirement)
+
+An explicitly named model is proxied **unchanged**. If the chosen backend
+does not have it, the backend's 404 is returned to the client as-is. The
+dispatcher never silently substitutes a different model.
+
+Only four rewrites exist, and each is logged with requested → served:
+
+- a role name → the role's model;
+- a bare backend name as the model (`primary`, `secondary`) → that
+  backend's default model;
+- a model-less request → the chosen backend's default model;
+- `pin_default_model` modes → the chosen backend's default model.
+
+Rationale, from production: the Python prototype's first version rewrote
+any unrecognized model to the backend default, which silently invalidated
+a week of two-model benchmark trials — both arms were served by the same
+default model. This rule is the project's founding lesson and is covered
+by tests (§11) that may not be weakened.
+
+---
+
+## 7. API surface
+
+### 7.1 Proxy endpoints (to the routed backend)
+
+- `POST /api/chat`, `POST /api/generate`, `POST /api/show`, `GET /api/ps`
+- `POST /v1/chat/completions`
+- `GET /api/tags` — merged, per §5.3 (dispatcher-answered)
+- `GET /v1/models` — dispatcher-answered: both backends' default models,
+  all backend names (aliases), and all role names
+- `GET /api/version` — dispatcher-answered: `{version, mode}`
+
+### 7.2 Admin endpoints (dispatcher-answered)
+
+- `GET /health` → `{ok, mode, backends: {<name>: up|down}}`
+- `GET /mode` → `{mode}` plus `expires_in_s` when the mode has a TTL
+- `POST /mode` with `{"mode": "<name>"}` → sets and persists the mode.
+  Unknown name → 400 with the list of configured modes.
+- `GET /modes` → all configured modes with their assignments (the
+  "which PC/GPU does each mode invoke" view).
+
+### 7.3 CLI
+
+The same binary doubles as the admin client:
+
+```bash
+gondola serve [--config dispatcher.yaml]
+gondola mode            # show active mode
+gondola mode dev        # switch
+gondola modes           # table of modes → backends
+gondola health
+```
+
+---
+
+## 8. Failure behaviour
+
+| Condition | Result |
+|---|---|
+| Routed backend down, mode forbids wake | 502, log line naming mode + backend |
+| Wake attempted, backend still down at timeout | 502 after `wake_timeout` |
+| Backend lacks the named model | Backend's 404, passed through untouched |
+| Mode state file missing/corrupt | Start in `default_mode`, log a warning |
+| Active mode's TTL expired | Atomically return to `default_mode` (checked per request) |
+| Config invalid at startup | Exit non-zero with the offending field; never start half-configured |
+| Upstream dies mid-stream | Stream terminates; log line with bytes served |
+
+---
+
+## 9. Logging
+
+One line per request on stdout: time, mode, requested model, served model
+(when different), backend, path, upstream status, time-to-first-byte.
+Plus event lines: `MODE set`, `REWRITE`, `WAKE`, `ROUTE ... FAILED`.
+Plain text by default; `--log-format json` for structured logs. No request
+bodies are ever logged.
+
+---
+
+## 10. Security posture
+
+The dispatcher is a LAN tool: the proxy surface has no auth in v1
+and the docs must say plainly to bind it to trusted networks only, exactly
+as Ollama itself is deployed. The admin surface (`POST /mode`) accepts an
+optional `admin_token` (Bearer) when configured; the spec recommends
+setting one whenever the listen address leaves the loopback. Mode changes
+and token failures are logged.
+
+---
+
+## 11. Testing requirements
+
+- **Routing matrix (unit)**: table-driven tests over mode × request class
+  × header × family, asserting backend + served model — including every
+  §6.1 pass-through case. A test that permits silent substitution fails
+  the suite by design.
+- **Mode lifecycle (unit)**: TTL expiry, corrupt state file, unknown mode
+  rejection, per-role overrides.
+- **Integration**: two fake Ollama backends (`httptest` servers) — one
+  that 404s unknown models — verifying passthrough of the 404, streaming,
+  tag merging without wake, and the wake-forbidden 502.
+- **Config (unit)**: invalid configs fail startup with the field named.
+
+---
+
+## 12. Migration from the Python prototype
+
+Same port, same endpoints, same four starter modes, same log vocabulary,
+so existing clients (an agent pointing at `127.0.0.1:11435`) switch
+by swapping the binary/container. Fleet-specific values (IPs, MAC, model
+names) move from environment variables into `dispatcher.yaml`; the file
+for the reference fleet is generated from the live v1.3 settings at cutover.
+
+---
+
+## 13. Decisions — resolved 2026-11-21
+
+1. **Config**: YAML file primary, as specced in §4. (PoC: file + CLI
+   flags; env field overrides deferred.)
+2. **Starter modes**: home/away/test/dev ship as the example config;
+   modes are fully user-definable, as specced in §4.3.
+3. **Admin token**: optional; recommended whenever bound beyond loopback.
+4. **Project name**: `gondola` — Go-Orchestrated Node Dispatch Over
+   Local Area (final pick, 2026-11-22, after the working names
+   `ollama-dispatcher` and `frog`).
+5. **Adapters**: backend interface in v1, Ollama adapter only;
+   llama.cpp/vLLM adapters deferred. A PAIR endpoint is an
+   Ollama-shaped backend and can sit behind the dispatcher unchanged.
+
+Addendum (same day, after NVIDIA PAIR research): PAIR (NVIDIA's Personal
+AI Router, Go, v1.0) already does discovery and eligibility routing
+across engines, but has no mode policy — no wake permissions, no
+benchmark pinning, no roles. This project is therefore positioned as the
+**mode/policy layer**, complementary to PAIR rather than competing with
+it. Live model-availability checks and discovery (ideas surfaced via
+parallel research) are future work, not v1.

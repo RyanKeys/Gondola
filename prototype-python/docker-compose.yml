@@ -1,0 +1,8 @@
+services:
+  dispatcher:
+    build: .
+    network_mode: host        # host networking so Wake-on-LAN broadcasts reach the LAN
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data          # persists the mode file across restarts

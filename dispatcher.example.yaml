@@ -1,0 +1,49 @@
+# gondola example configuration (SPEC.md section 4).
+# Two backends: an always-on primary and a wakeable secondary.
+
+backends:
+  primary:
+    url: http://192.168.1.10:11434
+    default_model: qwen3.5:9b
+    model_prefixes: [qwen2.5-coder]
+  secondary:
+    url: http://192.168.1.20:11434
+    mac: "AA:BB:CC:DD:EE:FF"
+    wol_broadcasts: [192.168.1.255, 255.255.255.255]
+    default_model: qwen3:14b
+    model_prefixes: [qwen3:14b]
+
+roles:
+  brain: qwen3.5:9b
+  # A role may instead name a default plus per-backend overrides, for
+  # fleets where the best model for the job differs by machine. The
+  # override for the serving backend wins; otherwise the default serves.
+  heavy:
+    default: qwen3.6:35b-a3b
+    overrides:
+      secondary: ornith:35b
+  coder: qwen3-coder:30b
+  utility: qwen3.5:4b
+
+default_mode: home
+modes:
+  home:
+    default: primary
+    wake: false
+  away:
+    default: secondary
+    wake: true
+  test:
+    default: primary
+    wake: false
+    pin_default_model: true
+  dev:
+    default: secondary
+    wake: true
+    ttl: 8h
+
+server:
+  listen: 0.0.0.0:11435
+  state_file: /data/mode.json
+  wake_timeout: 150s
+  admin_token: ""
