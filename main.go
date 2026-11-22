@@ -73,6 +73,7 @@ func runServe(args []string) error {
 		return err
 	}
 	d := NewDispatcher(cfg)
+	d.cfgPath = cfgPath
 	mode, _ := d.modes.Current()
 	d.logf("gondola %s listening on %s (mode=%s, backends=%s)",
 		version, cfg.Server.Listen, mode, strings.Join(cfg.BackendNames(), ","))

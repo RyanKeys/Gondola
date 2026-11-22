@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gondola — dispatcher console</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0d1117; color:#e6edf3; margin:0; padding:20px; }
+  h1 { font-size:20px; margin:0; } h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; margin:24px 0 8px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:14px 16px; }
+  .grow { flex:1 1 320px; }
+  button { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:6px 14px; font:inherit; cursor:pointer; }
+  button:hover { background:#30363d; } button.active { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  button.primary { background:#238636; border-color:#238636; color:#fff; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  .up { background:#3fb950; } .down { background:#f85149; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid #21262d; white-space:nowrap; }
+  th { color:#8b949e; font-weight:normal; }
+  td.wrap { white-space:normal; word-break:break-all; }
+  .muted { color:#8b949e; } .err { color:#f85149; } .ok { color:#3fb950; }
+  textarea { width:100%; box-sizing:border-box; min-height:340px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:10px; font:inherit; font-size:12.5px; }
+  input[type=password] { background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:6px 10px; font:inherit; }
+  #tokenbar { display:none; } #tokenbar.show { display:flex; }
+  .scroll { max-height:380px; overflow:auto; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <h1>🚠 gondola</h1>
+    <span class="muted" id="version"></span>
+    <span>mode: <strong id="curmode">?</strong></span>
+    <span class="muted" id="expires"></span>
+  </div>
+
+  <div class="row" id="tokenbar">
+    <span class="err">Admin token required:</span>
+    <input type="password" id="token" placeholder="admin token">
+    <button id="savetoken">Save token</button>
+  </div>
+
+  <h2>Mode</h2>
+  <div class="row" id="modes"></div>
+
+  <h2>Backends</h2>
+  <div class="row" id="backends"></div>
+
+  <h2>Activity — what gondola delegated</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>time</th><th>kind</th><th>mode</th><th>requested</th><th>served</th><th>backend</th><th>status</th><th>ms</th><th>detail</th></tr></thead>
+      <tbody id="activity"><tr><td colspan="9" class="muted">loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <h2>Config</h2>
+  <div class="card">
+    <div class="muted" id="cfgpath" style="margin-bottom:8px"></div>
+    <textarea id="cfgyaml" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button id="loadcfg">Reload</button>
+      <button class="primary" id="savecfg">Save config</button>
+      <span id="cfgstatus"></span>
+    </div>
+    <div class="muted" style="margin-top:8px">Saves are validated before they touch disk; the previous file is kept as <code>.bak</code>. Changes apply on restart. The admin token is never shown — leave <code>__REDACTED__</code> in place to keep it, or type a new value to rotate it.</div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const token = () => sessionStorage.getItem('gondola_token') || '';
+function headers() { const t = token(); return t ? {'Authorization': 'Bearer ' + t} : {}; }
+async function getJSON(path) {
+  const r = await fetch(path, {headers: headers()});
+  if (r.status === 401) { $('tokenbar').classList.add('show'); throw new Error('token required'); }
+  return r.json();
+}
+$('savetoken').onclick = () => { sessionStorage.setItem('gondola_token', $('token').value); $('tokenbar').classList.remove('show'); refreshAll(); };
+
+async function refreshStatus() {
+  try {
+    const v = await getJSON('/api/version'); $('version').textContent = 'v' + v.version;
+    const m = await getJSON('/mode');
+    $('curmode').textContent = m.mode;
+    $('expires').textContent = m.expires_in_s != null ? ('expires in ' + Math.round(m.expires_in_s/60) + ' min') : '';
+    const h = await getJSON('/health');
+    $('backends').innerHTML = '';
+    for (const [name, up] of Object.entries(h.backends)) {
+      const d = document.createElement('div'); d.className = 'card';
+      const dot = document.createElement('span'); dot.className = 'dot ' + (up ? 'up' : 'down');
+      d.append(dot, document.createTextNode(name + (up ? ' — up' : ' — DOWN')));
+      $('backends').append(d);
+    }
+    const modes = (await getJSON('/modes')).modes;
+    $('modes').innerHTML = '';
+    for (const name of Object.keys(modes).sort()) {
+      const b = document.createElement('button');
+      b.textContent = name; if (name === m.mode) b.className = 'active';
+      b.onclick = async () => {
+        const r = await fetch('/mode', {method:'POST', headers:{'Content-Type':'application/json', ...headers()}, body: JSON.stringify({mode: name})});
+        if (r.status === 401) { $('tokenbar').classList.add('show'); return; }
+        refreshAll();
+      };
+      $('modes').append(b);
+    }
+  } catch (e) { /* token bar already shown */ }
+}
+
+function cell(text, cls) { const td = document.createElement('td'); td.textContent = text ?? ''; if (cls) td.className = cls; return td; }
+async function refreshActivity() {
+  try {
+    const data = await getJSON('/admin/activity');
+    const tb = $('activity'); tb.innerHTML = '';
+    if (!data.entries.length) { tb.append(Object.assign(document.createElement('tr'), {})); tb.rows[0].append(cell('no activity yet — routing decisions will appear here', 'muted')); return; }
+    for (const e of data.entries) {
+      const tr = document.createElement('tr');
+      const when = new Date(e.time).toLocaleTimeString();
+      tr.append(cell(when, 'muted'), cell(e.kind), cell(e.mode || ''), cell(e.requested || ''), cell(e.served && e.served !== e.requested ? '→ ' + e.served : (e.rewritten ? '→ ' + (e.served || '') : ''), 'wrap'), cell(e.backend || ''), cell(e.status ? String(e.status) : '', e.status >= 400 ? 'err' : 'ok'), cell(e.ms ? String(e.ms) : ''), cell(e.detail || '', 'muted'));
+      tb.append(tr);
+    }
+  } catch (e) { /* token bar already shown */ }
+}
+
+async function loadConfig() {
+  try {
+    const c = await getJSON('/admin/config');
+    $('cfgpath').textContent = c.path;
+    $('cfgyaml').value = c.yaml;
+    $('cfgstatus').textContent = '';
+  } catch (e) { $('cfgstatus').textContent = 'token required'; $('cfgstatus').className = 'err'; }
+}
+$('loadcfg').onclick = loadConfig;
+$('savecfg').onclick = async () => {
+  $('cfgstatus').textContent = 'saving…'; $('cfgstatus').className = '';
+  const r = await fetch('/admin/config', {method:'PUT', headers:{'Content-Type':'application/json', ...headers()}, body: JSON.stringify({yaml: $('cfgyaml').value})});
+  const out = await r.json().catch(() => ({}));
+  if (r.ok) { $('cfgstatus').textContent = 'Saved. Restart gondola to apply.'; $('cfgstatus').className = 'ok'; }
+  else { $('cfgstatus').textContent = 'Rejected: ' + (out.error || r.status); $('cfgstatus').className = 'err'; }
+};
+
+function refreshAll() { refreshStatus(); refreshActivity(); }
+refreshAll(); loadConfig();
+setInterval(refreshStatus, 5000);
+setInterval(refreshActivity, 3000);
+</script>
+</body>
+</html>

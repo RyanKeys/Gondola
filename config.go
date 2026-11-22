@@ -105,6 +105,13 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseConfig(raw)
+}
+
+// parseConfig unmarshals and validates config YAML (SPEC.md section 4).
+// The web UI's config editor validates through this same path before a
+// save is allowed to touch the file on disk.
+func parseConfig(raw []byte) (*Config, error) {
 	var c Config
 	if err := yaml.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("config: parse: %w", err)

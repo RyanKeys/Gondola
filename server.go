@@ -10,22 +10,25 @@ import (
 	"time"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
-	cfg    *Config
-	modes  *ModeManager
-	waker  *waker
-	client *http.Client // no timeout: generation streams are long-lived
+	cfg      *Config
+	modes    *ModeManager
+	waker    *waker
+	client   *http.Client // no timeout: generation streams are long-lived
+	activity *activityLog
+	cfgPath  string // config file on disk, for the web UI editor (section 15)
 }
 
 func NewDispatcher(cfg *Config) *Dispatcher {
 	return &Dispatcher{
-		cfg:    cfg,
-		modes:  NewModeManager(cfg, NewStateStore(cfg.Server.StateFile)),
-		waker:  newWaker(),
-		client: &http.Client{},
+		cfg:      cfg,
+		modes:    NewModeManager(cfg, NewStateStore(cfg.Server.StateFile)),
+		waker:    newWaker(),
+		client:   &http.Client{},
+		activity: newActivityLog(),
 	}
 }
 
@@ -57,6 +60,10 @@ func (d *Dispatcher) Routes() http.Handler {
 	mux.HandleFunc("GET /mode", d.handleModeGet)
 	mux.HandleFunc("POST /mode", d.handleModePost)
 	mux.HandleFunc("GET /modes", d.handleModes)
+	mux.HandleFunc("GET /ui", d.handleUI)
+	mux.HandleFunc("GET /admin/activity", d.handleActivity)
+	mux.HandleFunc("GET /admin/config", d.handleConfigGet)
+	mux.HandleFunc("PUT /admin/config", d.handleConfigPut)
 	return mux
 }
 
@@ -80,11 +87,8 @@ func (d *Dispatcher) handleModeGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Dispatcher) handleModePost(w http.ResponseWriter, r *http.Request) {
-	if token := d.cfg.Server.AdminToken; token != "" {
-		if r.Header.Get("Authorization") != "Bearer "+token {
-			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "admin token required"})
-			return
-		}
+	if !d.requireAdmin(w, r) {
+		return
 	}
 	var body struct {
 		Mode string `json:"mode"`
@@ -100,6 +104,7 @@ func (d *Dispatcher) handleModePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.logf("MODE set -> %s", body.Mode)
+	d.activity.add(activityEntry{Kind: "mode", Mode: body.Mode, Detail: "mode set via API"})
 	writeJSON(w, http.StatusOK, map[string]any{"mode": body.Mode})
 }
 
@@ -209,6 +214,7 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 	}
 	if !d.ensureUp(dec.Backend, mode) {
 		d.logf("ROUTE mode=%s model=%s -> %s FAILED (unreachable, wake allowed=%v)", modeName, model, dec.Backend, mode.Wake)
+		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadGateway, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "backend unreachable"})
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "backend unreachable: " + dec.Backend})
 		return
 	}
@@ -231,12 +237,14 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 	resp, err := d.client.Do(upReq)
 	if err != nil {
 		d.logf("ROUTE mode=%s model=%s -> %s CONNECT-FAIL %v", modeName, model, dec.Backend, err)
+		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadGateway, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "backend connect failed"})
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "backend connect failed"})
 		return
 	}
 	defer resp.Body.Close()
 	d.logf("ROUTE mode=%s model=%s -> %s path=%s status=%d ttfb_ms=%d",
 		modeName, model, dec.Backend, path, resp.StatusCode, time.Since(t0).Milliseconds())
+	d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: resp.StatusCode, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds()})
 	for k, vs := range resp.Header {
 		lk := strings.ToLower(k)
 		if lk == "content-length" || lk == "transfer-encoding" || lk == "connection" {

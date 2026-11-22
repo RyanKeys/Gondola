@@ -476,3 +476,57 @@ was probed, so an empty result explains itself.
   file.
 - The read-only guarantee: a test backend that fails the test if any
   non-GET request arrives during a scan.
+
+## 15. Web UI
+
+Status: specified 2026-11-22 at the owner's direction; a local build
+exists and awaits the owner's review of this section before it ships.
+
+### 15.1 Surface
+
+- `GET /ui` — one embedded HTML page: current mode and mode switching,
+  backend health, the recent-activity table, and the config editor.
+- `GET /admin/activity` — the activity ring as JSON, newest first.
+- `GET /admin/config` — the config file's text (see 15.3).
+- `PUT /admin/config` — replace the config file's text (see 15.3).
+- Mode switching from the page uses the existing `POST /mode` (§7).
+
+### 15.2 Activity
+
+Every proxied request records an entry (mode, requested model, served
+model, backend, path, status, time-to-first-byte, whether a rewrite
+applied), as do mode changes and config saves. The log is an in-memory
+ring holding the most recent 300 entries: it is a live view of what the
+dispatcher just delegated, not an audit trail, and it resets on
+restart. The stdout log vocabulary (§11) is unchanged.
+
+### 15.3 Config editing
+
+- The editor works on the file the running instance was started with
+  (`serve --config`). A save validates the new text through the real
+  config loader first; invalid text is rejected with the loader's
+  error and the file on disk is untouched. A valid save keeps the
+  previous file as `<config>.bak` and replaces the file atomically.
+- Config is loaded at startup (§8), so a saved config takes effect on
+  restart; the API says so (`restart_required: true`) and the page
+  repeats it. There is no hot reload.
+- The admin token is the one secret a config can hold. `GET` replaces
+  its value with `__REDACTED__`; `PUT` substitutes the running token
+  back when the placeholder survives the round trip, so editing can
+  neither leak nor clobber it. Typing a different value rotates the
+  token, effective on restart like everything else.
+
+### 15.4 Authentication
+
+The `/ui` page shell is served openly, like `/health`. Every data
+endpoint behind it (`/admin/*`, and `POST /mode` as before) follows
+the §10 admin rule: open when no admin token is configured,
+Bearer-token-gated when one is. The page asks for the token on a 401
+and keeps it in `sessionStorage` only.
+
+### 15.5 Tests
+
+`webui_test.go` covers the ring's wrap and ordering, the admin gate
+open and closed, token redaction on GET, rejection of an invalid save
+(file and backup untouched), and a valid save's token round trip and
+`.bak` backup.
