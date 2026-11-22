@@ -53,14 +53,13 @@ available behind an Advanced section as an escape hatch. When an
 admin token is configured, the console's data endpoints require it;
 the token itself is never shown in the editor.
 
-## The one rule that matters most
+## Pass-through guarantee
 
-An explicitly named model is **passed through untouched**. If the chosen
-backend doesn't have it, Ollama's 404 comes back to the client — loudly.
-The dispatcher never silently substitutes a different model. (An earlier
-version did. It invalidated a week of benchmarks before anyone noticed.)
-Only four rewrites exist — role names, bare backend aliases, model-less
-requests, and the test-mode pin — and every one is logged.
+Gondola never silently substitutes models. Name a model and that exact
+model is requested from the serving backend; if the backend doesn't
+have it, you get its 404 — not a different model. The only rewrites are
+the deliberate ones: role names, bare backend aliases, model-less
+requests, and pin modes. Each one is recorded in the activity log.
 
 ## Quick start
 
