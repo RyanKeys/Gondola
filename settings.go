@@ -351,12 +351,7 @@ func (d *Dispatcher) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if prev, err := os.ReadFile(d.cfgPath); err == nil {
 		_ = os.WriteFile(d.cfgPath+".bak", prev, 0o644)
 	}
-	tmp := d.cfgPath + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return
-	}
-	if err := os.Rename(tmp, d.cfgPath); err != nil {
+	if err := writeConfigFile(d.cfgPath, raw); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}

@@ -165,6 +165,34 @@ func TestConfigPutValidRoundTripsTokenAndBacksUp(t *testing.T) {
 	}
 }
 
+func TestWriteConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/dispatcher.yaml"
+	if err := writeConfigFile(path, []byte("a: 1\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeConfigFile(path, []byte("a: 2\n")); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != "a: 2\n" {
+		t.Fatalf("content = %q, want the second write", got)
+	}
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Fatal("temp file left behind")
+	}
+	// A target that cannot be replaced or written (a directory) must
+	// surface an error, never a silent success. This stands in for
+	// the bind-mount EBUSY case, which a unit test cannot mount.
+	target := dir + "/adir"
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeConfigFile(target, []byte("x")); err == nil {
+		t.Fatal("writeConfigFile onto a directory: got nil error")
+	}
+}
+
 func TestUIServesPage(t *testing.T) {
 	d, _ := webUIDispatcher(t, "sekrit")
 	rec := doReq(t, d, "GET", "/ui", "", "")

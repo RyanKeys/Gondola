@@ -124,6 +124,24 @@ func (d *Dispatcher) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"path": d.cfgPath, "yaml": redactToken(string(raw))})
 }
 
+// writeConfigFile replaces the config file's contents. It prefers an
+// atomic temp-file-plus-rename; when the config is a single-file bind
+// mount (a common Docker shape) renaming over it is impossible
+// (EBUSY), so it falls back to writing in place. The content has
+// already been validated at this point, and the caller's .bak copy is
+// the recovery path.
+func writeConfigFile(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err == nil {
+		return nil
+	}
+	defer os.Remove(tmp)
+	return os.WriteFile(path, data, 0o644)
+}
+
 func (d *Dispatcher) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	if !d.requireAdmin(w, r) {
 		return
@@ -152,12 +170,7 @@ func (d *Dispatcher) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	if prev, err := os.ReadFile(d.cfgPath); err == nil {
 		_ = os.WriteFile(d.cfgPath+".bak", prev, 0o644)
 	}
-	tmp := d.cfgPath + ".tmp"
-	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return
-	}
-	if err := os.Rename(tmp, d.cfgPath); err != nil {
+	if err := writeConfigFile(d.cfgPath, []byte(text)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}

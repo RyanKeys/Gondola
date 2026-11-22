@@ -591,7 +591,11 @@ restart.
 
 Same guarantees as section 15.3: validate first, and an invalid
 change writes nothing; the previous file is kept as .bak; the replace
-is atomic; the response reports restart_required. One difference: the
+is atomic where the filesystem allows it — when the config is a
+single-file bind mount (a common Docker shape) renaming over it is
+impossible, so the writer falls back to replacing the contents in
+place (the content was validated before the write, and the .bak is
+the recovery path); the response reports restart_required. One difference: the
 server renders the file as canonical YAML from the structured
 document, so comments in a hand-maintained file do not survive a
 console save (the .bak preserves them).
