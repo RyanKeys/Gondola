@@ -146,7 +146,7 @@ func modeSummary(c *Config, modeName string, mode ModeCfg, info modeInfo) string
 		parts = append(parts, "asleep devices are not woken")
 	}
 	if mode.PinDefaultModel {
-		parts = append(parts, "every request is pinned to the serving backend's default model")
+		parts = append(parts, "requests that do not name a role are pinned to the serving backend's default model")
 	}
 	if mode.TTL != "" {
 		parts = append(parts, fmt.Sprintf("returns to %s after %s", c.DefaultMode, mode.TTL))
