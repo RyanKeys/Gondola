@@ -5,45 +5,91 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gondola — dispatcher console</title>
 <style>
-  :root { color-scheme: dark; }
-  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0d1117; color:#e6edf3; margin:0; padding:20px; }
-  h1 { font-size:20px; margin:0; } h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; margin:24px 0 8px; }
-  h3 { font-size:13px; margin:0 0 8px; }
-  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:14px 16px; }
-  .grow { flex:1 1 340px; }
-  button { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:6px 14px; font:inherit; cursor:pointer; }
-  button:hover { background:#30363d; } button.active { background:#1f6feb; border-color:#1f6feb; color:#fff; }
-  button.primary { background:#238636; border-color:#238636; color:#fff; }
-  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
-  .up { background:#3fb950; } .down { background:#f85149; }
-  .badge { display:inline-block; border:1px solid #30363d; border-radius:20px; padding:1px 9px; font-size:11px; margin-left:8px; }
-  .b-default { color:#3fb950; border-color:#3fb950; } .b-role { color:#58a6ff; border-color:#58a6ff; }
-  .b-oncall { color:#d29922; border-color:#d29922; } .b-ignored { color:#8b949e; } .b-unused { color:#f85149; border-color:#f85149; }
-  table { width:100%; border-collapse:collapse; font-size:12.5px; }
-  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid #21262d; white-space:nowrap; }
-  th { color:#8b949e; font-weight:normal; }
+  :root {
+    color-scheme: dark;
+    --bg:#0b0e13; --surface:#12161d; --surface2:#171c25; --border:#262d38;
+    --text:#e8edf3; --muted:#8b96a5; --accent:#2f81f7; --green:#3fb950;
+    --red:#f85149; --amber:#d29922; --blue:#58a6ff;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg:#f4f6f8; --surface:#ffffff; --surface2:#eef1f4; --border:#d5dbe1;
+      --text:#1c232c; --muted:#5f6b7a; --accent:#0969da;
+    }
+  }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background:var(--bg); color:var(--text); margin:0; font-size:15px; line-height:1.45; }
+  .page { max-width:1060px; margin:0 auto; padding:0 16px 48px; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--border);
+           margin:0 -16px; padding:12px 16px; }
+  .hrow { display:flex; gap:10px; flex-wrap:wrap; align-items:center; max-width:1060px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:650; margin:0; letter-spacing:-.01em; }
+  h2 { font-size:16px; font-weight:650; margin:30px 0 10px; letter-spacing:-.01em; }
+  h3 { font-size:14px; font-weight:650; margin:0 0 6px; }
+  .modepill { background:var(--surface2); border:1px solid var(--border); border-radius:999px; padding:3px 12px; font-size:13px; }
+  .modepill strong { font-weight:650; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  button { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:9px;
+           padding:10px 18px; font:inherit; font-size:14px; cursor:pointer; min-height:42px; }
+  button:hover { border-color:var(--muted); }
+  button.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button.primary { background:#238636; border-color:#238636; color:#fff; font-weight:600; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; }
+  .up { background:var(--green); } .down { background:var(--red); }
+  .badge { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:1px 9px; font-size:11px; margin-left:8px; vertical-align:1px; }
+  .b-default { color:var(--green); border-color:var(--green); } .b-role { color:var(--blue); border-color:var(--blue); }
+  .b-oncall { color:var(--amber); border-color:var(--amber); } .b-ignored { color:var(--muted); } .b-unused { color:var(--red); border-color:var(--red); }
+  .tscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--border); white-space:nowrap; vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+  tr:last-child td { border-bottom:none; }
   td.wrap { white-space:normal; word-break:break-all; }
-  .muted { color:#8b949e; } .err { color:#f85149; } .ok { color:#3fb950; }
-  textarea { width:100%; box-sizing:border-box; min-height:300px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:10px; font:inherit; font-size:12.5px; }
-  input[type=text], input[type=password], select { background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:5px 9px; font:inherit; font-size:12.5px; }
-  input[type=text] { width:100%; box-sizing:border-box; }
-  label { display:block; font-size:11px; color:#8b949e; margin:8px 0 3px; }
-  .field { flex:1 1 180px; }
-  #tokenbar { display:none; } #tokenbar.show { display:flex; }
-  .scroll { max-height:380px; overflow:auto; }
-  details.card { margin-top:24px; }
-  summary { cursor:pointer; color:#8b949e; }
-  .summary-line { font-size:13.5px; margin:6px 0 10px; }
+  #mode-roles td:last-child { white-space:normal; word-break:break-all; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; }
+  .muted { color:var(--muted); } .err { color:var(--red); } .ok { color:var(--green); }
+  .summary-line { font-size:15px; margin:2px 0 14px; }
+  #mode-backends { align-items:stretch; }
+  #mode-backends .card { flex:1 1 210px; padding:13px 15px; font-weight:600; }
+  #mode-backends .card .muted { font-weight:400; font-size:13px; margin-top:4px; }
+  #modes .row { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px; align-items:flex-start; }
+  #modes .row button { min-width:96px; }
+  #modes .row .muted { flex:1 1 220px; padding-top:9px; font-size:13.5px; }
+  textarea { width:100%; min-height:280px; background:var(--bg); color:var(--text); border:1px solid var(--border);
+             border-radius:9px; padding:12px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; }
+  input[type=text], input[type=password], select { background:var(--bg); color:var(--text); border:1px solid var(--border);
+             border-radius:9px; padding:9px 11px; font:inherit; font-size:14px; width:100%; min-height:42px; }
+  input[type=checkbox] { width:19px; height:19px; margin-right:9px; vertical-align:-4px; accent-color:var(--accent); }
+  label { display:block; font-size:12.5px; color:var(--muted); margin:0 0 5px; }
+  #settings .card { display:grid; grid-template-columns:1fr; gap:6px 18px; margin-top:12px; }
+  #settings .card h3 { grid-column:1 / -1; }
+  @media (min-width:760px) { #settings .card { grid-template-columns:1fr 1fr; } }
+  #tokenbar { display:none; margin-top:14px; background:var(--surface); border:1px solid var(--amber);
+              border-radius:12px; padding:14px 16px; }
+  #tokenbar.show { display:flex; }
+  #tokenbar input { flex:1 1 200px; width:auto; }
+  .scroll { max-height:420px; overflow:auto; -webkit-overflow-scrolling:touch; padding:4px 6px; }
+  details.card { margin-top:26px; }
+  summary { cursor:pointer; font-weight:600; padding:4px 0; }
+  @media (max-width:719px) {
+    input[type=text], input[type=password], select, textarea { font-size:16px; }
+    .page { padding:0 12px 40px; } header { margin:0 -12px; padding:10px 12px; }
+    th, td { padding:6px 8px; }
+  }
 </style>
 </head>
 <body>
-  <div class="row">
-    <h1>🚠 gondola</h1>
-    <span class="muted" id="version"></span>
-    <span>mode: <strong id="curmode">?</strong></span>
-    <span class="muted" id="expires"></span>
-  </div>
+<div class="page">
+  <header>
+    <div class="hrow">
+      <h1>🚠 gondola</h1>
+      <span class="muted" id="version"></span>
+      <span class="modepill">mode <strong id="curmode">?</strong></span>
+      <span class="muted" id="expires"></span>
+    </div>
+  </header>
 
   <div class="row" id="tokenbar">
     <span class="err">Admin token required:</span>
@@ -55,10 +101,12 @@
   <div class="card">
     <div class="summary-line" id="mode-summary">…</div>
     <div class="row" id="mode-backends"></div>
-    <table style="margin-top:10px">
+    <div class="tscroll">
+    <table id="mode-roles-table" style="margin-top:12px">
       <thead><tr><th>role</th><th>served by</th><th>model</th></tr></thead>
       <tbody id="mode-roles"></tbody>
     </table>
+    </div>
   </div>
 
   <h2>Switch mode</h2>
@@ -75,7 +123,7 @@
   <h2>Settings</h2>
   <div class="muted" style="margin-bottom:8px">Structured settings edit the saved config (validated before anything is written; previous file kept as .bak). Changes apply on restart. Renaming a device rewrites every mode and role that references it.</div>
   <div id="settings"><div class="card muted">loading… (token required if one is configured)</div></div>
-  <div class="row" style="margin-top:10px">
+  <div class="row" style="margin-top:12px">
     <button id="loadsettings">Reload settings</button>
     <button class="primary" id="savesettings">Save settings</button>
     <span id="setstatus"></span>
@@ -92,6 +140,7 @@
       <span id="cfgstatus"></span>
     </div>
   </details>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
