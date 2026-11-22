@@ -22,12 +22,16 @@ lives in [prototype-python/](prototype-python/).
 ## Console
 
 A running gondola serves a small web console at `/ui`: switch modes,
-watch backend health, see the most recent routing decisions (what was
-delegated where, and whether a rewrite applied), and edit the config
-file in place. Config saves are validated through the real loader
-before they touch disk, keep a `.bak` of the previous file, and apply
-on restart. When an admin token is configured, the console's data
-endpoints require it; the token itself is never shown in the editor.
+watch backend health, see what each mode actually uses or ignores,
+review the most recent routing decisions (what was delegated where,
+and whether a rewrite applied), and change settings through
+structured controls — including renaming a device, which rewrites
+every mode and role that references it. Settings saves are validated
+through the real loader before they touch disk, keep a `.bak` of the
+previous file, and apply on restart; a raw config editor remains
+available behind an Advanced section as an escape hatch. When an
+admin token is configured, the console's data endpoints require it;
+the token itself is never shown in the editor.
 
 ## The one rule that matters most
 

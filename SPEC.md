@@ -479,8 +479,8 @@ was probed, so an empty result explains itself.
 
 ## 15. Web UI
 
-Status: specified 2026-11-22 at the owner's direction; a local build
-exists and awaits the owner's review of this section before it ships.
+Status: shipped in 0.3.0 (2026-11-22), after the owner's review of
+this section and the code's technical summary.
 
 ### 15.1 Surface
 
@@ -530,3 +530,99 @@ and keeps it in `sessionStorage` only.
 open and closed, token redaction on GET, rejection of an invalid save
 (file and backup untouched), and a valid save's token round trip and
 `.bak` backup.
+
+## 16. Structured settings
+
+Status: specified 2026-11-22 at the owner's direction and approved the
+same day. Supersedes the raw config editor's placement in section
+15.3: the console changes settings through structured controls, never
+by editing config text as the primary path.
+
+### 16.1 Principle
+
+The config file is the dispatcher's source of truth, but the console
+treats it as data, not text. Every change is a typed field edit,
+validated through the real config loader before it reaches disk.
+Hand-editing the file on the host remains the operator's escape
+hatch.
+
+### 16.2 Surface
+
+- `GET /admin/settings` — the saved config as structured JSON
+  (backends, roles, modes, default mode, server settings minus the
+  token), plus, per backend, the model names that backend currently
+  serves (live from its /api/tags, best-effort) to populate pickers.
+- `PUT /admin/settings` — replace the saved config with a structured
+  document of the same shape, plus a `renames` map (section 16.4).
+  The server builds a Config from it, validates it through the same
+  loader path as startup, and only then writes.
+- The raw editor (GET/PUT /admin/config, section 15.3) stays, but
+  leaves the main console: it moves behind an Advanced section at the
+  bottom of the page, collapsed by default, revealed only by an
+  explicit click, and headed with a warning that structured settings
+  are the supported path. Its validation, .bak, and restart semantics
+  are unchanged.
+
+### 16.3 What the console can change
+
+- Backends: rename; URL; default model (picker from that backend's
+  live models, free text allowed); MAC; WoL broadcasts; model
+  prefixes.
+- Roles: default model; per-backend override models.
+- Modes: default backend (picker); wake; pin-default-model; TTL;
+  per-role backend assignments (pickers).
+- Fleet: default mode (picker); server wake timeout.
+- The admin token is not a settings field — it stays settable only in
+  the file itself, so the console can never lock anyone out of it. A
+  settings save always preserves the token currently on disk.
+
+### 16.4 Rename
+
+Renaming a backend rewrites every reference in the same save: the
+backends key, every mode's default, every mode's role assignments,
+and every role's per-backend overrides. The new name must be
+non-empty, use only letters, digits, dashes, and underscores, and
+collide with no existing backend or role name. A rename is a breaking
+change for anything addressing the old name (bare-alias model
+requests, X-Backend headers) and, like all settings, applies on
+restart.
+
+### 16.5 Saving
+
+Same guarantees as section 15.3: validate first, and an invalid
+change writes nothing; the previous file is kept as .bak; the replace
+is atomic; the response reports restart_required. One difference: the
+server renders the file as canonical YAML from the structured
+document, so comments in a hand-maintained file do not survive a
+console save (the .bak preserves them).
+
+### 16.6 Tests
+
+Rename rewrites all references and rejects collisions; a settings
+round trip (GET then PUT unchanged) reproduces an equivalent config
+with the on-disk token preserved; an invalid settings document is
+rejected with the file untouched; mode classification and summaries
+match the routing rules.
+
+### 16.7 Say what each mode does
+
+The console derives, from the config alone, what every mode means for
+every device, and shows it wherever a mode is displayed or edited:
+
+- Per-device classification in a mode: **Default** (serves all
+  traffic the mode does not assign elsewhere), **Role-assigned**
+  (serves the named roles, listed), **On-call** (not assigned, but
+  reachable when a request names one of its model families or a
+  header asks for it; the display states whether this mode would wake
+  it if asleep), **Ignored** (not assigned and no family pins reach
+  it; this mode will not use the device).
+- A one-line summary per mode, generated server-side from its actual
+  assignments, including pin and TTL behaviour where set.
+- A role table per mode: each role, the device that serves it, and
+  the model it resolves to there (per-backend overrides applied).
+- In the settings editor, a device no mode references at all is
+  flagged "unused by every mode".
+
+The classification is computed server-side from the config and served
+with the settings and modes payloads, so every client states the same
+truth; the page never re-derives routing logic in JavaScript.

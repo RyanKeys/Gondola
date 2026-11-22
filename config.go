@@ -11,11 +11,11 @@ import (
 
 // BackendCfg is one PC/GPU running Ollama.
 type BackendCfg struct {
-	URL           string   `yaml:"url"`
-	MAC           string   `yaml:"mac"`
-	WOLBroadcasts []string `yaml:"wol_broadcasts"`
-	DefaultModel  string   `yaml:"default_model"`
-	ModelPrefixes []string `yaml:"model_prefixes"`
+	URL           string   `yaml:"url" json:"url"`
+	MAC           string   `yaml:"mac" json:"mac"`
+	WOLBroadcasts []string `yaml:"wol_broadcasts" json:"wol_broadcasts"`
+	DefaultModel  string   `yaml:"default_model" json:"default_model"`
+	ModelPrefixes []string `yaml:"model_prefixes" json:"model_prefixes"`
 }
 
 // RoleTarget is what a role resolves to. In YAML a role is either a
@@ -23,8 +23,8 @@ type BackendCfg struct {
 // default model plus per-backend overrides — for fleets where the best
 // model for a job differs by machine.
 type RoleTarget struct {
-	Default   string            `yaml:"default"`
-	Overrides map[string]string `yaml:"overrides,omitempty"`
+	Default   string            `yaml:"default" json:"default"`
+	Overrides map[string]string `yaml:"overrides,omitempty" json:"overrides,omitempty"`
 }
 
 // UnmarshalYAML accepts both role forms: a scalar model name, or a
@@ -57,12 +57,12 @@ func (r RoleTarget) Model(backend string) string {
 // whole mode; PinDefaultModel rewrites any model to the chosen backend's
 // default (benchmark isolation); TTL auto-returns to the default mode.
 type ModeCfg struct {
-	Default         string            `yaml:"default"`
-	Wake            bool              `yaml:"wake"`
-	PinDefaultModel bool              `yaml:"pin_default_model"`
-	TTL             string            `yaml:"ttl"`
-	Roles           map[string]string `yaml:"roles"`
-	TTLDur          time.Duration     `yaml:"-"`
+	Default         string            `yaml:"default" json:"default"`
+	Wake            bool              `yaml:"wake" json:"wake"`
+	PinDefaultModel bool              `yaml:"pin_default_model" json:"pin_default_model"`
+	TTL             string            `yaml:"ttl" json:"ttl"`
+	Roles           map[string]string `yaml:"roles" json:"roles"`
+	TTLDur          time.Duration     `yaml:"-" json:"-"`
 }
 
 // Config is the whole dispatcher configuration (SPEC.md section 4).

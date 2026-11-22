@@ -8,23 +8,33 @@
   :root { color-scheme: dark; }
   body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0d1117; color:#e6edf3; margin:0; padding:20px; }
   h1 { font-size:20px; margin:0; } h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; margin:24px 0 8px; }
-  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  h3 { font-size:13px; margin:0 0 8px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:14px 16px; }
-  .grow { flex:1 1 320px; }
+  .grow { flex:1 1 340px; }
   button { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:6px 14px; font:inherit; cursor:pointer; }
   button:hover { background:#30363d; } button.active { background:#1f6feb; border-color:#1f6feb; color:#fff; }
   button.primary { background:#238636; border-color:#238636; color:#fff; }
   .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
   .up { background:#3fb950; } .down { background:#f85149; }
+  .badge { display:inline-block; border:1px solid #30363d; border-radius:20px; padding:1px 9px; font-size:11px; margin-left:8px; }
+  .b-default { color:#3fb950; border-color:#3fb950; } .b-role { color:#58a6ff; border-color:#58a6ff; }
+  .b-oncall { color:#d29922; border-color:#d29922; } .b-ignored { color:#8b949e; } .b-unused { color:#f85149; border-color:#f85149; }
   table { width:100%; border-collapse:collapse; font-size:12.5px; }
   th, td { text-align:left; padding:5px 8px; border-bottom:1px solid #21262d; white-space:nowrap; }
   th { color:#8b949e; font-weight:normal; }
   td.wrap { white-space:normal; word-break:break-all; }
   .muted { color:#8b949e; } .err { color:#f85149; } .ok { color:#3fb950; }
-  textarea { width:100%; box-sizing:border-box; min-height:340px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:10px; font:inherit; font-size:12.5px; }
-  input[type=password] { background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:6px 10px; font:inherit; }
+  textarea { width:100%; box-sizing:border-box; min-height:300px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:10px; font:inherit; font-size:12.5px; }
+  input[type=text], input[type=password], select { background:#0d1117; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:5px 9px; font:inherit; font-size:12.5px; }
+  input[type=text] { width:100%; box-sizing:border-box; }
+  label { display:block; font-size:11px; color:#8b949e; margin:8px 0 3px; }
+  .field { flex:1 1 180px; }
   #tokenbar { display:none; } #tokenbar.show { display:flex; }
   .scroll { max-height:380px; overflow:auto; }
+  details.card { margin-top:24px; }
+  summary { cursor:pointer; color:#8b949e; }
+  .summary-line { font-size:13.5px; margin:6px 0 10px; }
 </style>
 </head>
 <body>
@@ -41,11 +51,18 @@
     <button id="savetoken">Save token</button>
   </div>
 
-  <h2>Mode</h2>
-  <div class="row" id="modes"></div>
+  <h2>Current mode — what it uses</h2>
+  <div class="card">
+    <div class="summary-line" id="mode-summary">…</div>
+    <div class="row" id="mode-backends"></div>
+    <table style="margin-top:10px">
+      <thead><tr><th>role</th><th>served by</th><th>model</th></tr></thead>
+      <tbody id="mode-roles"></tbody>
+    </table>
+  </div>
 
-  <h2>Backends</h2>
-  <div class="row" id="backends"></div>
+  <h2>Switch mode</h2>
+  <div id="modes"></div>
 
   <h2>Activity — what gondola delegated</h2>
   <div class="card scroll">
@@ -55,17 +72,26 @@
     </table>
   </div>
 
-  <h2>Config</h2>
-  <div class="card">
+  <h2>Settings</h2>
+  <div class="muted" style="margin-bottom:8px">Structured settings edit the saved config (validated before anything is written; previous file kept as .bak). Changes apply on restart. Renaming a device rewrites every mode and role that references it.</div>
+  <div id="settings"><div class="card muted">loading… (token required if one is configured)</div></div>
+  <div class="row" style="margin-top:10px">
+    <button id="loadsettings">Reload settings</button>
+    <button class="primary" id="savesettings">Save settings</button>
+    <span id="setstatus"></span>
+  </div>
+
+  <details class="card">
+    <summary>Advanced — raw config file (escape hatch)</summary>
+    <p class="err">Structured settings above are the supported path. This editor writes the config file as text; a save is still validated and the previous file kept as .bak, and changes apply on restart. The admin token is never shown — leave __REDACTED__ in place to keep it, or type a new value to rotate it.</p>
     <div class="muted" id="cfgpath" style="margin-bottom:8px"></div>
     <textarea id="cfgyaml" spellcheck="false"></textarea>
     <div class="row" style="margin-top:10px">
       <button id="loadcfg">Reload</button>
-      <button class="primary" id="savecfg">Save config</button>
+      <button id="savecfg">Save raw config</button>
       <span id="cfgstatus"></span>
     </div>
-    <div class="muted" style="margin-top:8px">Saves are validated before they touch disk; the previous file is kept as <code>.bak</code>. Changes apply on restart. The admin token is never shown — leave <code>__REDACTED__</code> in place to keep it, or type a new value to rotate it.</div>
-  </div>
+  </details>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -76,52 +102,223 @@ async function getJSON(path) {
   if (r.status === 401) { $('tokenbar').classList.add('show'); throw new Error('token required'); }
   return r.json();
 }
-$('savetoken').onclick = () => { sessionStorage.setItem('gondola_token', $('token').value); $('tokenbar').classList.remove('show'); refreshAll(); };
+$('savetoken').onclick = () => { sessionStorage.setItem('gondola_token', $('token').value); $('tokenbar').classList.remove('show'); refreshAll(); loadSettings(); loadConfig(); };
+function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
 
+let health = {};
 async function refreshStatus() {
   try {
     const v = await getJSON('/api/version'); $('version').textContent = 'v' + v.version;
     const m = await getJSON('/mode');
     $('curmode').textContent = m.mode;
     $('expires').textContent = m.expires_in_s != null ? ('expires in ' + Math.round(m.expires_in_s/60) + ' min') : '';
-    const h = await getJSON('/health');
-    $('backends').innerHTML = '';
-    for (const [name, up] of Object.entries(h.backends)) {
-      const d = document.createElement('div'); d.className = 'card';
-      const dot = document.createElement('span'); dot.className = 'dot ' + (up ? 'up' : 'down');
-      d.append(dot, document.createTextNode(name + (up ? ' — up' : ' — DOWN')));
-      $('backends').append(d);
+    const h = await getJSON('/health'); health = h.backends;
+    const all = await getJSON('/modes');
+    // active mode consequences
+    const info = all.info[m.mode];
+    $('mode-summary').textContent = info ? info.summary : '';
+    const mb = $('mode-backends'); mb.innerHTML = '';
+    if (info) for (const bc of info.backends) {
+      const d = el('div', null, 'card');
+      const dot = el('span', null, 'dot ' + (health[bc.backend] ? 'up' : 'down'));
+      d.append(dot, document.createTextNode(bc.backend));
+      const badge = el('span', bc.class, 'badge b-' + bc.class.replace('role-assigned','role'));
+      d.append(badge);
+      if (bc.roles && bc.roles.length) d.append(el('div', 'roles: ' + bc.roles.join(', '), 'muted'));
+      if (bc.prefixes && bc.prefixes.length) d.append(el('div', 'families: ' + bc.prefixes.join(', '), 'muted'));
+      mb.append(d);
     }
-    const modes = (await getJSON('/modes')).modes;
-    $('modes').innerHTML = '';
-    for (const name of Object.keys(modes).sort()) {
-      const b = document.createElement('button');
-      b.textContent = name; if (name === m.mode) b.className = 'active';
+    const mr = $('mode-roles'); mr.innerHTML = '';
+    if (info) for (const rl of info.roles) {
+      const tr = document.createElement('tr');
+      tr.append(el('td', rl.role), el('td', rl.backend), el('td', rl.model));
+      mr.append(tr);
+    }
+    // mode switcher with summaries
+    const box = $('modes'); box.innerHTML = '';
+    for (const name of Object.keys(all.modes).sort()) {
+      const row = el('div', null, 'row'); row.style.marginBottom = '6px';
+      const b = el('button', name, name === m.mode ? 'active' : '');
       b.onclick = async () => {
         const r = await fetch('/mode', {method:'POST', headers:{'Content-Type':'application/json', ...headers()}, body: JSON.stringify({mode: name})});
         if (r.status === 401) { $('tokenbar').classList.add('show'); return; }
         refreshAll();
       };
-      $('modes').append(b);
+      row.append(b, el('span', all.summaries[name] || '', 'muted'));
+      box.append(row);
     }
   } catch (e) { /* token bar already shown */ }
 }
 
-function cell(text, cls) { const td = document.createElement('td'); td.textContent = text ?? ''; if (cls) td.className = cls; return td; }
 async function refreshActivity() {
   try {
     const data = await getJSON('/admin/activity');
     const tb = $('activity'); tb.innerHTML = '';
-    if (!data.entries.length) { tb.append(Object.assign(document.createElement('tr'), {})); tb.rows[0].append(cell('no activity yet — routing decisions will appear here', 'muted')); return; }
+    if (!data.entries.length) { const tr = document.createElement('tr'); const td = el('td', 'no activity yet — routing decisions will appear here', 'muted'); td.colSpan = 9; tr.append(td); tb.append(tr); return; }
     for (const e of data.entries) {
       const tr = document.createElement('tr');
-      const when = new Date(e.time).toLocaleTimeString();
-      tr.append(cell(when, 'muted'), cell(e.kind), cell(e.mode || ''), cell(e.requested || ''), cell(e.served && e.served !== e.requested ? '→ ' + e.served : (e.rewritten ? '→ ' + (e.served || '') : ''), 'wrap'), cell(e.backend || ''), cell(e.status ? String(e.status) : '', e.status >= 400 ? 'err' : 'ok'), cell(e.ms ? String(e.ms) : ''), cell(e.detail || '', 'muted'));
+      tr.append(el('td', new Date(e.time).toLocaleTimeString(), 'muted'), el('td', e.kind), el('td', e.mode || ''), el('td', e.requested || ''), el('td', e.served && e.served !== e.requested ? '→ ' + e.served : '', 'wrap'), el('td', e.backend || ''), el('td', e.status ? String(e.status) : '', e.status >= 400 ? 'err' : 'ok'), el('td', e.ms ? String(e.ms) : ''), el('td', e.detail || '', 'muted'));
       tb.append(tr);
     }
   } catch (e) { /* token bar already shown */ }
 }
 
+// ---------- structured settings ----------
+let S = null;         // settings doc as loaded
+let SMODELS = {};     // backend -> [model names]
+let SUNUSED = {};
+function textField(labelText, value, listId) {
+  const wrap = el('div', null, 'field');
+  wrap.append(el('label', labelText));
+  const inp = document.createElement('input'); inp.type = 'text'; inp.value = value ?? '';
+  if (listId) inp.setAttribute('list', listId);
+  wrap.append(inp);
+  return {wrap, inp};
+}
+function selectField(labelText, value, options) {
+  const wrap = el('div', null, 'field');
+  wrap.append(el('label', labelText));
+  const sel = document.createElement('select');
+  for (const o of options) { const op = el('option', o); op.value = o; sel.append(op); }
+  sel.value = value;
+  wrap.append(sel);
+  return {wrap, sel};
+}
+function checkField(labelText, value) {
+  const wrap = el('div', null, 'field');
+  const lab = el('label', labelText);
+  const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!value;
+  lab.prepend(inp); wrap.append(lab);
+  return {wrap, inp};
+}
+const F = {}; // field registry: key -> getter
+function reg(key, inp, kind) { F[key] = () => kind === 'check' ? inp.checked : (kind === 'csv' ? inp.value.split(',').map(s => s.trim()).filter(Boolean) : inp.value); }
+
+async function loadSettings() {
+  try {
+    const data = await getJSON('/admin/settings');
+    S = data.settings; SMODELS = data.models || {}; SUNUSED = data.unused || {};
+    renderSettings();
+    $('setstatus').textContent = '';
+  } catch (e) { $('setstatus').textContent = 'token required'; $('setstatus').className = 'err'; }
+}
+function datalist(id, items) {
+  const dl = document.createElement('datalist'); dl.id = id;
+  for (const it of items || []) { const o = document.createElement('option'); o.value = it; dl.append(o); }
+  return dl;
+}
+function renderSettings() {
+  for (const k of Object.keys(F)) delete F[k];
+  const root = $('settings'); root.innerHTML = '';
+  const backends = Object.keys(S.backends).sort();
+  const roles = Object.keys(S.roles).sort();
+  const modes = Object.keys(S.modes).sort();
+  const allModels = [...new Set(Object.values(SMODELS).flat())].sort();
+  root.append(datalist('dl-all', allModels));
+  for (const b of backends) root.append(datalist('dl-' + b, SMODELS[b]));
+
+  // fleet
+  const fleet = el('div', null, 'card grow');
+  fleet.append(el('h3', 'Fleet'));
+  const dm = selectField('default mode', S.default_mode, modes); reg('default_mode', dm.sel); fleet.append(dm.wrap);
+  const wt = textField('server wake timeout', S.server.wake_timeout); reg('server.wake_timeout', wt.inp); fleet.append(wt.wrap);
+  root.append(fleet);
+
+  // backends
+  for (const b of backends) {
+    const cfg = S.backends[b];
+    const card = el('div', null, 'card grow'); card.style.marginTop = '12px';
+    const title = el('h3', 'Device: ' + b);
+    if (SUNUSED[b]) title.append(el('span', 'unused by every mode', 'badge b-unused'));
+    card.append(title);
+    const nm = textField('name (rename)', b); reg('be.' + b + '.name', nm.inp); card.append(nm.wrap);
+    const url = textField('ollama URL', cfg.url); reg('be.' + b + '.url', url.inp); card.append(url.wrap);
+    const dmod = textField('default model', cfg.default_model, 'dl-' + b); reg('be.' + b + '.default_model', dmod.inp); card.append(dmod.wrap);
+    const mac = textField('MAC (for Wake-on-LAN)', cfg.mac); reg('be.' + b + '.mac', mac.inp); card.append(mac.wrap);
+    const bc = textField('WoL broadcasts (comma-separated)', (cfg.wol_broadcasts || []).join(', ')); reg('be.' + b + '.wol_broadcasts', bc.inp, 'csv'); card.append(bc.wrap);
+    const px = textField('model prefixes / families (comma-separated)', (cfg.model_prefixes || []).join(', ')); reg('be.' + b + '.model_prefixes', px.inp, 'csv'); card.append(px.wrap);
+    root.append(card);
+  }
+
+  // roles
+  const rc = el('div', null, 'card grow'); rc.style.marginTop = '12px';
+  rc.append(el('h3', 'Roles'));
+  for (const r of roles) {
+    const t = S.roles[r];
+    const d = textField(r + ' — default model', t.default, 'dl-all'); reg('role.' + r + '.default', d.inp); rc.append(d.wrap);
+    for (const b of backends) {
+      const ov = textField(r + ' — override on ' + b, (t.overrides || {})[b] || '', 'dl-' + b); reg('role.' + r + '.ov.' + b, ov.inp); rc.append(ov.wrap);
+    }
+  }
+  root.append(rc);
+
+  // modes
+  for (const m of modes) {
+    const mc = S.modes[m];
+    const card = el('div', null, 'card grow'); card.style.marginTop = '12px';
+    card.append(el('h3', 'Mode: ' + m));
+    const df = selectField('default device', mc.default, backends); reg('mode.' + m + '.default', df.sel); card.append(df.wrap);
+    const wk = checkField('wake devices (Wake-on-LAN allowed)', mc.wake); reg('mode.' + m + '.wake', wk.inp, 'check'); card.append(wk.wrap);
+    const pn = checkField('pin default model (benchmark isolation)', mc.pin_default_model); reg('mode.' + m + '.pin', pn.inp, 'check'); card.append(pn.wrap);
+    const ttl = textField('TTL (e.g. 8h; blank = none)', mc.ttl); reg('mode.' + m + '.ttl', ttl.inp); card.append(ttl.wrap);
+    for (const r of roles) {
+      const cur = (mc.roles || {})[r] || '';
+      const sf = selectField('role ' + r + ' → device (blank = mode default)', cur, ['', ...backends]); reg('mode.' + m + '.role.' + r, sf.sel); card.append(sf.wrap);
+    }
+    root.append(card);
+  }
+}
+function collectSettings() {
+  const doc = JSON.parse(JSON.stringify(S));
+  const renames = {};
+  doc.default_mode = F['default_mode']();
+  doc.server.wake_timeout = F['server.wake_timeout']();
+  for (const b of Object.keys(S.backends)) {
+    const c = doc.backends[b];
+    const newName = F['be.' + b + '.name']().trim();
+    if (newName && newName !== b) renames[b] = newName;
+    c.url = F['be.' + b + '.url']();
+    c.default_model = F['be.' + b + '.default_model']();
+    c.mac = F['be.' + b + '.mac']();
+    c.wol_broadcasts = F['be.' + b + '.wol_broadcasts']();
+    c.model_prefixes = F['be.' + b + '.model_prefixes']();
+  }
+  for (const r of Object.keys(S.roles)) {
+    const t = doc.roles[r];
+    t.default = F['role.' + r + '.default']();
+    t.overrides = t.overrides || {};
+    for (const b of Object.keys(S.backends)) {
+      const v = F['role.' + r + '.ov.' + b]();
+      if (v) t.overrides[b] = v; else delete t.overrides[b];
+    }
+    if (!Object.keys(t.overrides).length) delete t.overrides;
+  }
+  for (const m of Object.keys(S.modes)) {
+    const mc = doc.modes[m];
+    mc.default = F['mode.' + m + '.default']();
+    mc.wake = F['mode.' + m + '.wake']();
+    mc.pin_default_model = F['mode.' + m + '.pin']();
+    mc.ttl = F['mode.' + m + '.ttl']();
+    mc.roles = mc.roles || {};
+    for (const r of Object.keys(S.roles)) {
+      const v = F['mode.' + m + '.role.' + r]();
+      if (v) mc.roles[r] = v; else delete mc.roles[r];
+    }
+    if (!Object.keys(mc.roles).length) delete mc.roles;
+  }
+  return {settings: doc, renames};
+}
+$('loadsettings').onclick = loadSettings;
+$('savesettings').onclick = async () => {
+  if (!S) { $('setstatus').textContent = 'settings not loaded'; return; }
+  $('setstatus').textContent = 'saving…'; $('setstatus').className = '';
+  const r = await fetch('/admin/settings', {method:'PUT', headers:{'Content-Type':'application/json', ...headers()}, body: JSON.stringify(collectSettings())});
+  const out = await r.json().catch(() => ({}));
+  if (r.ok) { $('setstatus').textContent = 'Saved. Restart gondola to apply.'; $('setstatus').className = 'ok'; loadSettings(); }
+  else { $('setstatus').textContent = 'Rejected: ' + (out.error || r.status); $('setstatus').className = 'err'; }
+};
+
+// ---------- raw editor (advanced) ----------
 async function loadConfig() {
   try {
     const c = await getJSON('/admin/config');
@@ -140,7 +337,7 @@ $('savecfg').onclick = async () => {
 };
 
 function refreshAll() { refreshStatus(); refreshActivity(); }
-refreshAll(); loadConfig();
+refreshAll(); loadSettings(); loadConfig();
 setInterval(refreshStatus, 5000);
 setInterval(refreshActivity, 3000);
 </script>

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.3.0"
+const version = "0.4.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
@@ -64,6 +64,8 @@ func (d *Dispatcher) Routes() http.Handler {
 	mux.HandleFunc("GET /admin/activity", d.handleActivity)
 	mux.HandleFunc("GET /admin/config", d.handleConfigGet)
 	mux.HandleFunc("PUT /admin/config", d.handleConfigPut)
+	mux.HandleFunc("GET /admin/settings", d.handleSettingsGet)
+	mux.HandleFunc("PUT /admin/settings", d.handleSettingsPut)
 	return mux
 }
 
@@ -117,11 +119,15 @@ func (d *Dispatcher) handleModes(w http.ResponseWriter, r *http.Request) {
 		Roles           map[string]string `json:"roles,omitempty"`
 	}
 	out := map[string]modeView{}
+	summaries := map[string]string{}
+	infos := map[string]modeInfo{}
 	for _, name := range d.cfg.ModeNames() {
 		m := d.cfg.Modes[name]
 		out[name] = modeView{m.Default, m.Wake, m.PinDefaultModel, m.TTL, m.Roles}
+		infos[name] = describeMode(d.cfg, name)
+		summaries[name] = infos[name].Summary
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"modes": out})
+	writeJSON(w, http.StatusOK, map[string]any{"modes": out, "summaries": summaries, "info": infos})
 }
 
 func (d *Dispatcher) handleTags(w http.ResponseWriter, r *http.Request) {
