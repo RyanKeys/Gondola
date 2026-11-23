@@ -40,7 +40,9 @@ Modes are configuration, not code — define your own in `dispatcher.yaml`.
 - **A web console** — modes, live activity, and structured settings at `/ui`
 - **One static binary** — no runtime dependencies; Ollama- and OpenAI-compatible endpoints
 
-Full design: [SPEC.md](SPEC.md). The Python prototype this replaces
+New here? Start with the [quickstart tutorial](TUTORIAL.md) — wiring
+Hermes Agent (or any OpenAI-compatible client) to gondola, including
+per-subtask strength routing. Full design: [SPEC.md](SPEC.md). The Python prototype this replaces
 lives in [prototype-python/](prototype-python/).
 
 ## Why gondola
