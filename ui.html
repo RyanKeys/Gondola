@@ -183,6 +183,7 @@ async function refreshStatus() {
       d.append(badge);
       if (bc.roles && bc.roles.length) d.append(el('div', 'roles: ' + bc.roles.join(', '), 'muted'));
       if (bc.prefixes && bc.prefixes.length) d.append(el('div', 'families: ' + bc.prefixes.join(', '), 'muted'));
+      if (bc.dialect && bc.dialect !== 'ollama') d.append(el('div', 'dialect: ' + bc.dialect, 'muted'));
       mb.append(d);
     }
     const mr = $('mode-roles'); mr.innerHTML = '';
@@ -292,6 +293,9 @@ function renderSettings() {
     card.append(title);
     const nm = textField('name (rename)', b); reg('be.' + b + '.name', nm.inp); card.append(nm.wrap);
     const url = textField('ollama URL', cfg.url); reg('be.' + b + '.url', url.inp); card.append(url.wrap);
+    const dia = selectField('dialect', cfg.dialect || 'ollama', ['ollama', 'openai']); reg('be.' + b + '.dialect', dia.sel); card.append(dia.wrap);
+    const akey = textField('API key (openai dialect; gondola\u2019s credential to the backend)', cfg.api_key || ''); reg('be.' + b + '.api_key', akey.inp); card.append(akey.wrap);
+    const mctx = textField('max context (openai dialect; informational)', cfg.max_context ? String(cfg.max_context) : ''); reg('be.' + b + '.max_context', mctx.inp); card.append(mctx.wrap);
     const dmod = textField('default model', cfg.default_model, 'dl-' + b); reg('be.' + b + '.default_model', dmod.inp); card.append(dmod.wrap);
     const mac = textField('MAC (for Wake-on-LAN)', cfg.mac); reg('be.' + b + '.mac', mac.inp); card.append(mac.wrap);
     const bc = textField('WoL broadcasts (comma-separated)', (cfg.wol_broadcasts || []).join(', ')); reg('be.' + b + '.wol_broadcasts', bc.inp, 'csv'); card.append(bc.wrap);
@@ -337,6 +341,9 @@ function collectSettings() {
     const newName = F['be.' + b + '.name']().trim();
     if (newName && newName !== b) renames[b] = newName;
     c.url = F['be.' + b + '.url']();
+    c.dialect = F['be.' + b + '.dialect']();
+    c.api_key = F['be.' + b + '.api_key']();
+    c.max_context = parseInt(F['be.' + b + '.max_context'](), 10) || 0;
     c.default_model = F['be.' + b + '.default_model']();
     c.mac = F['be.' + b + '.mac']();
     c.wol_broadcasts = F['be.' + b + '.wol_broadcasts']();

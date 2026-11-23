@@ -734,3 +734,63 @@ ring (section 15) — never written to disk, gone on restart — and the
 console shows it beside the requested and served models. The body
 forwarded to the backend stays byte-identical; like section 20's
 counters, this is read-only observation.
+
+## 23. OpenAI-dialect backends (specified and built 2026-11-23)
+
+Motivation: the Anton A/B (identical heavy fix job, both engines)
+measured Ollama serving Qwen3.6-35B-A3B Q4_K_M at 15/15 quality,
+40 tok/s generation, 281/263 s wall, against PolyStrata serving
+the same model at UD-Q3_K_M: 15/15, 128/126 tok/s generation,
+35/49 s wall. PolyStrata speaks the OpenAI API; gondola's backends
+spoke only Ollama's. This section adds the second dialect so a
+role can be served by an OpenAI-compatible backend where it wins.
+Brain, utility, and coder stay on Ollama — PolyStrata is an MoE
+engine with no build for those dense models.
+
+23.1 A backend gains `dialect`: `"ollama"` (the default when
+absent; existing configuration is untouched) or `"openai"`. Any
+other value is a config error. OpenAI backends accept two further
+optional fields: `api_key` (gondola's Bearer credential to the
+backend) and `max_context` (informational, shown in the console;
+gondola does not enforce it — an openai backend's context length
+is its launch property, not a per-request option).
+
+23.2 For an openai backend, `POST /v1/chat/completions` forwards
+to the backend's own endpoint, byte-identical except the model
+field, which follows the same resolution as sections 6 and 19 —
+roles resolve, explicit models pass through untouched, a backend
+404 returns loudly. A configured `api_key` sets the Authorization
+header, replacing any client-supplied one. No Ollama-specific
+fields are injected. Any other path routed to an openai backend
+fails loudly with an error naming the dialect mismatch — never a
+silent translation. Embeddings remain Ollama-dialect only.
+
+23.3 Streams pass through unaltered. Throughput (section 20)
+follows its OpenAI rule — usage-based estimate, marked
+approximate — except when a non-streamed response carries a
+server `timings` object (Strata sends one): its
+`predicted_per_second` is recorded as exact.
+
+23.4 `ensureUp` probes per dialect: Ollama `GET /api/version`,
+openai `GET /health`; up is HTTP 200 whether or not a model is
+loaded (a Strata server that idle-unloaded its model is up; the
+chat request triggers the reload). Wake-on-LAN is host-level and
+unchanged; wake-ahead uses the same per-dialect probe.
+
+23.5 The settings page lists an openai backend's models from its
+`/v1/models`; the console shows a backend's dialect in the mode
+overview and edits dialect, api_key, and max_context alongside
+the other backend fields.
+
+Deployment on Anton (server side): the PolyStrata server runs the
+UD-Q3_K_M model at 65536 context (Hermes's floor; verified by
+re-running the A/B harness direct against the 64K config before
+wiring: 15/15, generation above the Ollama floor), bound to the
+LAN address with an install-generated API key and
+`--idle-unload 300`, so the card returns to the brain between
+heavy jobs. Rollout: a backend `AntonStrata` serves test mode's
+heavy first (Phase 1); home heavy's Anton target switches through
+settings alone only on the operator's word after Phase 1 evidence
+(Phase 2), with Ollama's build kept installed as the instant
+rollback. Non-goals: moving brain/utility/coder, multi-model
+Strata serving, Jarvis's Strata, embeddings through Strata.

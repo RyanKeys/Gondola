@@ -67,6 +67,7 @@ func (doc settingsDoc) toConfig(token string) *Config {
 type backendClass struct {
 	Backend  string   `json:"backend"`
 	Class    string   `json:"class"` // default | role-assigned | on-call | ignored
+	Dialect  string   `json:"dialect"`
 	Roles    []string `json:"roles,omitempty"`
 	Prefixes []string `json:"prefixes,omitempty"`
 }
@@ -95,7 +96,10 @@ func describeMode(c *Config, modeName string) modeInfo {
 	}
 	info := modeInfo{}
 	for _, name := range c.BackendNames() {
-		bc := backendClass{Backend: name}
+		bc := backendClass{Backend: name, Dialect: c.Backends[name].Dialect}
+		if bc.Dialect == "" {
+			bc.Dialect = "ollama"
+		}
 		switch {
 		case name == mode.Default:
 			bc.Class = "default"
@@ -241,10 +245,23 @@ func applyRenames(c *Config, renames map[string]string) error {
 
 // --- handlers ---
 
-// backendModels fetches one backend's model names (best-effort).
-func backendModels(url string) []string {
+// backendModels fetches one backend's model names in its own
+// dialect (best-effort): Ollama's /api/tags, or an openai backend's
+// /v1/models (section 23.5).
+func backendModels(b BackendCfg) []string {
 	probe := &http.Client{Timeout: 2 * time.Second}
-	resp, err := probe.Get(strings.TrimRight(url, "/") + "/api/tags")
+	path := "/api/tags"
+	if b.IsOpenAI() {
+		path = "/v1/models"
+	}
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(b.URL, "/")+path, nil)
+	if err != nil {
+		return nil
+	}
+	if b.IsOpenAI() && b.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+b.APIKey)
+	}
+	resp, err := probe.Do(req)
 	if err != nil {
 		return nil
 	}
@@ -252,17 +269,31 @@ func backendModels(url string) []string {
 	if resp.StatusCode != http.StatusOK {
 		return nil
 	}
-	var tags struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
-		return nil
-	}
 	names := []string{}
-	for _, m := range tags.Models {
-		names = append(names, m.Name)
+	if b.IsOpenAI() {
+		var list struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+			return nil
+		}
+		for _, m := range list.Data {
+			names = append(names, m.ID)
+		}
+	} else {
+		var tags struct {
+			Models []struct {
+				Name string `json:"name"`
+			} `json:"models"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+			return nil
+		}
+		for _, m := range tags.Models {
+			names = append(names, m.Name)
+		}
 	}
 	sort.Strings(names)
 	return names
@@ -291,7 +322,7 @@ func (d *Dispatcher) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	models := map[string][]string{}
 	unused := map[string]bool{}
 	for _, name := range saved.BackendNames() {
-		models[name] = backendModels(saved.Backends[name].URL)
+		models[name] = backendModels(saved.Backends[name])
 		unused[name] = !usedByAnyMode(saved, name)
 	}
 	infos := map[string]modeInfo{}

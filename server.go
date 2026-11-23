@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.8.0"
+const version = "0.9.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
@@ -78,7 +78,7 @@ func (d *Dispatcher) handleHealth(w http.ResponseWriter, r *http.Request) {
 	backends := map[string]bool{}
 	probe := &http.Client{Timeout: 2 * time.Second}
 	for _, name := range d.cfg.BackendNames() {
-		backends[name] = reachable(probe, d.cfg.Backends[name].URL)
+		backends[name] = reachable(probe, d.cfg.Backends[name])
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": mode, "backends": backends})
 }
@@ -224,6 +224,16 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 			}
 		}
 	}
+	bcfg := d.cfg.Backends[dec.Backend]
+	if bcfg.IsOpenAI() && path != "/v1/chat/completions" {
+		// Section 23.2: an openai backend serves chat completions
+		// only. Anything else fails loudly — never a silent
+		// translation between dialects.
+		d.logf("ROUTE mode=%s model=%s -> %s DIALECT-MISMATCH path=%s", modeName, model, dec.Backend, path)
+		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadRequest, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "dialect mismatch", Input: preview})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("backend %s speaks the openai dialect; only /v1/chat/completions is proxied to openai backends", dec.Backend)})
+		return
+	}
 	if !d.ensureUp(dec.Backend, mode) {
 		d.logf("ROUTE mode=%s model=%s -> %s FAILED (unreachable, wake allowed=%v)", modeName, model, dec.Backend, mode.Wake)
 		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadGateway, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "backend unreachable", Input: preview})
@@ -244,6 +254,11 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 		for _, v := range vs {
 			upReq.Header.Add(k, v)
 		}
+	}
+	if bcfg.IsOpenAI() && bcfg.APIKey != "" {
+		// The key is gondola's credential to the backend (section
+		// 23.2): it replaces any client-supplied Authorization.
+		upReq.Header.Set("Authorization", "Bearer "+bcfg.APIKey)
 	}
 	upReq.ContentLength = int64(len(raw))
 	resp, err := d.client.Do(upReq)

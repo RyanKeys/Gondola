@@ -9,14 +9,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// BackendCfg is one PC/GPU running Ollama.
+// BackendCfg is one PC/GPU serving models. Dialect selects the API
+// the backend speaks (SPEC.md section 23): "ollama" (the default
+// when absent) or "openai" for an OpenAI-compatible server such as
+// PolyStrata. APIKey is gondola's Bearer credential to an openai
+// backend; MaxContext is informational only (shown in the console)
+// — an openai backend's context length is its launch property.
 type BackendCfg struct {
 	URL           string   `yaml:"url" json:"url"`
 	MAC           string   `yaml:"mac" json:"mac"`
 	WOLBroadcasts []string `yaml:"wol_broadcasts" json:"wol_broadcasts"`
 	DefaultModel  string   `yaml:"default_model" json:"default_model"`
 	ModelPrefixes []string `yaml:"model_prefixes" json:"model_prefixes"`
+	Dialect       string   `yaml:"dialect" json:"dialect"`
+	APIKey        string   `yaml:"api_key" json:"api_key"`
+	MaxContext    int      `yaml:"max_context" json:"max_context"`
 }
+
+// IsOpenAI reports whether the backend speaks the OpenAI dialect.
+func (b BackendCfg) IsOpenAI() bool { return b.Dialect == "openai" }
 
 // RoleTarget is what a role resolves to. In YAML a role is either a
 // plain model name (shorthand for Default alone) or a mapping with a
@@ -132,6 +143,14 @@ func (c *Config) validate() error {
 		}
 		if b.DefaultModel == "" {
 			return fmt.Errorf("config: backend %q: default_model is required", name)
+		}
+		switch b.Dialect {
+		case "", "ollama", "openai":
+		default:
+			return fmt.Errorf("config: backend %q: dialect %q is not \"ollama\" or \"openai\"", name, b.Dialect)
+		}
+		if b.MaxContext < 0 {
+			return fmt.Errorf("config: backend %q: max_context must not be negative", name)
 		}
 	}
 	if c.DefaultMode == "" {

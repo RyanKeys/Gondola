@@ -9,9 +9,17 @@ import (
 	"time"
 )
 
-// reachable reports whether a backend answers GET /api/version.
-func reachable(client *http.Client, base string) bool {
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(base, "/")+"/api/version", nil)
+// reachable reports whether a backend is answering, probed in its
+// own dialect (SPEC.md section 23.4): Ollama backends answer
+// GET /api/version; openai backends answer GET /health — up means
+// HTTP 200, whether or not a model is currently loaded (a chat
+// request triggers the load).
+func reachable(client *http.Client, b BackendCfg) bool {
+	path := "/api/version"
+	if b.IsOpenAI() {
+		path = "/health"
+	}
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(b.URL, "/")+path, nil)
 	if err != nil {
 		return false
 	}
@@ -94,7 +102,7 @@ func (d *Dispatcher) wakeAhead(modeName string) {
 	probe := &http.Client{Timeout: 2 * time.Second}
 	for _, name := range wakeTargets(d.cfg, mode) {
 		b := d.cfg.Backends[name]
-		if b.MAC == "" || reachable(probe, b.URL) {
+		if b.MAC == "" || reachable(probe, b) {
 			continue
 		}
 		if err := sendMagicFn(b.MAC, b.WOLBroadcasts); err != nil {
@@ -131,7 +139,7 @@ func (w *waker) lockFor(name string) *sync.Mutex {
 func (d *Dispatcher) ensureUp(name string, mode ModeCfg) bool {
 	b := d.cfg.Backends[name]
 	probe := &http.Client{Timeout: 2 * time.Second}
-	if reachable(probe, b.URL) {
+	if reachable(probe, b) {
 		return true
 	}
 	if b.MAC == "" || !mode.Wake {
@@ -140,7 +148,7 @@ func (d *Dispatcher) ensureUp(name string, mode ModeCfg) bool {
 	lock := d.waker.lockFor(name)
 	lock.Lock()
 	defer lock.Unlock()
-	if reachable(probe, b.URL) {
+	if reachable(probe, b) {
 		return true
 	}
 	d.logf("WAKE backend=%s mac=%s", name, b.MAC)
@@ -155,7 +163,7 @@ func (d *Dispatcher) ensureUp(name string, mode ModeCfg) bool {
 			lastSent = time.Now()
 		}
 		time.Sleep(5 * time.Second)
-		if reachable(&http.Client{Timeout: 3 * time.Second}, b.URL) {
+		if reachable(&http.Client{Timeout: 3 * time.Second}, b) {
 			d.logf("WAKE-OK backend=%s", name)
 			return true
 		}

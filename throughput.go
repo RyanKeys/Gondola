@@ -64,8 +64,27 @@ func observeThroughput(path string, tail []byte, totalMs, firstByteMs int64) thr
 					PromptTokens     int `json:"prompt_tokens"`
 					CompletionTokens int `json:"completion_tokens"`
 				} `json:"usage"`
+				Timings *struct {
+					PromptN            int     `json:"prompt_n"`
+					PredictedN         int     `json:"predicted_n"`
+					PredictedPerSecond float64 `json:"predicted_per_second"`
+				} `json:"timings"`
 			}
-			if err := json.Unmarshal(raw, &body); err != nil || body.Usage == nil {
+			if err := json.Unmarshal(raw, &body); err != nil || (body.Usage == nil && body.Timings == nil) {
+				continue
+			}
+			if body.Timings != nil && body.Timings.PredictedPerSecond > 0 {
+				// Section 23.3: server-reported timings (Strata
+				// sends them) are exact, not an estimate.
+				tp := throughput{tps: body.Timings.PredictedPerSecond, approx: false,
+					evalCount: body.Timings.PredictedN, promptEvalCount: body.Timings.PromptN}
+				if body.Usage != nil {
+					tp.evalCount = body.Usage.CompletionTokens
+					tp.promptEvalCount = body.Usage.PromptTokens
+				}
+				return tp
+			}
+			if body.Usage == nil {
 				continue
 			}
 			tp := throughput{evalCount: body.Usage.CompletionTokens, promptEvalCount: body.Usage.PromptTokens, approx: true}
