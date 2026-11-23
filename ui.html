@@ -122,8 +122,8 @@
   <h2>Activity — what gondola delegated</h2>
   <div class="card scroll">
     <table>
-      <thead><tr><th>time</th><th>kind</th><th>mode</th><th>requested</th><th>served</th><th>backend</th><th>status</th><th>ms</th><th>tok/s</th><th>detail</th></tr></thead>
-      <tbody id="activity"><tr><td colspan="10" class="muted">loading…</td></tr></tbody>
+      <thead><tr><th>time</th><th>kind</th><th>mode</th><th>requested</th><th>served</th><th>backend</th><th>input</th><th>status</th><th>ms</th><th>tok/s</th><th>detail</th></tr></thead>
+      <tbody id="activity"><tr><td colspan="11" class="muted">loading…</td></tr></tbody>
     </table>
   </div>
   <div class="muted" style="margin:6px 0 14px">tok/s comes from the backend's own counters; ~ marks an estimate from OpenAI usage plus timing.</div>
@@ -211,10 +211,10 @@ async function refreshActivity() {
   try {
     const data = await getJSON('/admin/activity');
     const tb = $('activity'); tb.innerHTML = '';
-    if (!data.entries.length) { const tr = document.createElement('tr'); const td = el('td', 'no activity yet — routing decisions will appear here', 'muted'); td.colSpan = 10; tr.append(td); tb.append(tr); return; }
+    if (!data.entries.length) { const tr = document.createElement('tr'); const td = el('td', 'no activity yet — routing decisions will appear here', 'muted'); td.colSpan = 11; tr.append(td); tb.append(tr); return; }
     for (const e of data.entries) {
       const tr = document.createElement('tr');
-      tr.append(el('td', new Date(e.time).toLocaleTimeString(), 'muted'), el('td', e.kind), el('td', e.mode || ''), el('td', e.requested || ''), el('td', e.served && e.served !== e.requested ? '→ ' + e.served : '', 'wrap'), el('td', e.backend || ''), el('td', e.status ? String(e.status) : '', e.status >= 400 ? 'err' : 'ok'), el('td', e.ms ? String(e.ms) : ''), el('td', e.tok_per_sec ? e.tok_per_sec.toFixed(1) + (e.tok_per_sec_approx ? '~' : '') : ''), el('td', e.detail || '', 'muted'));
+      tr.append(el('td', new Date(e.time).toLocaleTimeString(), 'muted'), el('td', e.kind), el('td', e.mode || ''), el('td', e.requested || ''), el('td', e.served && e.served !== e.requested ? '→ ' + e.served : '', 'wrap'), el('td', e.backend || ''), el('td', e.input || '', 'wrap muted'), el('td', e.status ? String(e.status) : '', e.status >= 400 ? 'err' : 'ok'), el('td', e.ms ? String(e.ms) : ''), el('td', e.tok_per_sec ? e.tok_per_sec.toFixed(1) + (e.tok_per_sec_approx ? '~' : '') : ''), el('td', e.detail || '', 'muted'));
       tb.append(tr);
     }
   } catch (e) { /* token bar already shown */ }

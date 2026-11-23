@@ -35,6 +35,7 @@ type activityEntry struct {
 	Rewritten       bool      `json:"rewritten,omitempty"`
 	Ms              int64     `json:"ms,omitempty"`
 	Detail          string    `json:"detail,omitempty"`
+	Input           string    `json:"input,omitempty"`
 	EvalCount       int       `json:"eval_count,omitempty"`
 	PromptEvalCount int       `json:"prompt_eval_count,omitempty"`
 	TPS             float64   `json:"tok_per_sec,omitempty"`

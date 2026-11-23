@@ -718,3 +718,19 @@ and `tok_per_sec_approx`, and its `ms` becomes the total duration
 per backend and model over the current ring. Everything lives in
 the ring — a live view that resets on restart, not an audit trail
 (section 15).
+
+## 21. Input preview
+
+So a feed row can be matched to the request that produced it, each
+route entry also carries `input`: a short preview of what was asked.
+The router already parses the request body for its model field
+(section 6); the preview is one more field kept from that same parse.
+Chat-shaped bodies yield the text of the last user message (system
+prompts are never included); generate-shaped bodies yield the
+prompt; anything else yields an empty preview. Content parts in an
+array are concatenated. The preview is whitespace-collapsed and
+capped at 160 characters. It lives only in the in-memory activity
+ring (section 15) — never written to disk, gone on restart — and the
+console shows it beside the requested and served models. The body
+forwarded to the backend stays byte-identical; like section 20's
+counters, this is read-only observation.

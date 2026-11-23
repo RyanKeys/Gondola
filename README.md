@@ -35,6 +35,7 @@ Modes are configuration, not code — define your own in `dispatcher.yaml`.
 - **Wake-on-LAN** — asleep machines are woken when the mode sends them work
 - **Wake-ahead** — switching modes wakes the machines the new mode uses, before the first request arrives
 - **Live throughput** — tokens/sec per request in the console, from the backends' own counters
+- **Input preview** — the console shows what each request asked for, so a routing decision can be matched to its input
 - **Discovery** — `gondola discover` scans your LAN and writes a starter config
 - **A web console** — modes, live activity, and structured settings at `/ui`
 - **One static binary** — no runtime dependencies; Ollama- and OpenAI-compatible endpoints

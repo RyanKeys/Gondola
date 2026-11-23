@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.7.0"
+const version = "0.8.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
@@ -208,6 +208,7 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 		_ = json.Unmarshal(raw, &probe)
 		model = probe.Model
 	}
+	preview := inputPreview(raw)
 	dec, err := d.cfg.Resolve(model, r.Header.Get("X-Backend"), mode)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
@@ -225,7 +226,7 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 	}
 	if !d.ensureUp(dec.Backend, mode) {
 		d.logf("ROUTE mode=%s model=%s -> %s FAILED (unreachable, wake allowed=%v)", modeName, model, dec.Backend, mode.Wake)
-		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadGateway, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "backend unreachable"})
+		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadGateway, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "backend unreachable", Input: preview})
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "backend unreachable: " + dec.Backend})
 		return
 	}
@@ -248,7 +249,7 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 	resp, err := d.client.Do(upReq)
 	if err != nil {
 		d.logf("ROUTE mode=%s model=%s -> %s CONNECT-FAIL %v", modeName, model, dec.Backend, err)
-		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadGateway, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "backend connect failed"})
+		d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: http.StatusBadGateway, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds(), Detail: "backend connect failed", Input: preview})
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "backend connect failed"})
 		return
 	}
@@ -256,7 +257,7 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 	ttfbMs := time.Since(t0).Milliseconds()
 	d.logf("ROUTE mode=%s model=%s -> %s path=%s status=%d ttfb_ms=%d",
 		modeName, model, dec.Backend, path, resp.StatusCode, ttfbMs)
-	entryID := d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: resp.StatusCode, Rewritten: dec.Rewritten, Ms: ttfbMs})
+	entryID := d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: resp.StatusCode, Rewritten: dec.Rewritten, Ms: ttfbMs, Input: preview})
 	for k, vs := range resp.Header {
 		lk := strings.ToLower(k)
 		if lk == "content-length" || lk == "transfer-encoding" || lk == "connection" {
