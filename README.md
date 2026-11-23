@@ -22,6 +22,12 @@ Go as a single static binary. Point your agent or app at one endpoint;
 the dispatcher decides, per request, which PC/GPU serves it — waking that
 machine over Wake-on-LAN when the active mode allows it.
 
+If you run more than one machine with a GPU — a home AI lab, an always-on
+local LLM server next to a gaming PC, an AI agent that should use the
+strong hardware only when it matters — gondola is the router in front of
+all of it: an Ollama load balancer with a policy layer, so one endpoint
+drives every machine you own.
+
 A **mode** is a named assignment of machines to jobs: `home` might keep
 everything on the always-on server and never wake the gaming PC, `away`
 might prefer the big GPU, `test` pins unassigned requests to one machine
@@ -96,6 +102,24 @@ have it, you get its 404 — not a different model. The only rewrites are
 the deliberate ones: role names, bare backend aliases, model-less
 requests, and pin modes. Each one is recorded in the activity log.
 
+## Install
+
+Grab the latest binary for your platform from the
+[releases page](https://github.com/RyanKeys/Gondola/releases) —
+Linux amd64 and arm64 builds with checksums are attached to each
+release:
+
+```bash
+chmod +x gondola-<version>-linux-amd64
+mv gondola-<version>-linux-amd64 gondola
+```
+
+Or build from source (Go 1.24 or newer, no other dependencies):
+
+```bash
+go build -o gondola .
+```
+
 ## Quick start
 
 ```bash
@@ -106,7 +130,6 @@ or by hand:
 
 ```bash
 cp dispatcher.example.yaml dispatcher.yaml   # your machines, models, modes
-go build -o gondola .
 ./gondola serve --config dispatcher.yaml
 ```
 
@@ -134,6 +157,22 @@ backend aliases, and all role names). Streaming passes through as-is.
 Roles let clients ask for a job instead of a model — `brain`, `heavy`,
 `coder`, `utility` by default — and the mode decides which machine
 serves the role.
+
+## Documentation
+
+- [TUTORIAL.md](TUTORIAL.md) — wiring a client (Hermes Agent or any
+  OpenAI-compatible app) to gondola, including strength routing
+- [SPEC.md](SPEC.md) — the full design: modes, roles, routing rules,
+  the console, discovery, and backend dialects
+- [DESIGN.md](DESIGN.md) — the invariants a change must not break,
+  the threat model, and the accepted tradeoffs
+- [CHANGELOG.md](CHANGELOG.md) — what changed in each release
+
+## Contributing
+
+Issues and pull requests are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for build and test commands and the
+two documents to read before a larger change.
 
 ## Tests
 
