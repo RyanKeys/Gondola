@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build binaries for (e.g. v0.4.3)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,17 +17,23 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
       - name: Check tag matches version in code
         run: |
           CODE_VERSION=$(grep -hoP 'const version\s*=\s*"\K[^"]+' *.go | head -1)
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="${{ steps.tag.outputs.tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"
           echo "code: $CODE_VERSION  tag: $TAG_VERSION"
           if [ "$CODE_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match version $CODE_VERSION in the code"
+            echo "::error::tag ${{ steps.tag.outputs.tag }} does not match version $CODE_VERSION in the code"
             exit 1
           fi
       - name: Vet
@@ -31,14 +42,16 @@ jobs:
         run: go test ./...
       - name: Build binaries
         run: |
+          TAG="${{ steps.tag.outputs.tag }}"
           mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "dist/gondola-${GITHUB_REF_NAME}-linux-amd64" .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o "dist/gondola-${GITHUB_REF_NAME}-linux-arm64" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "dist/gondola-${TAG}-linux-amd64" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o "dist/gondola-${TAG}-linux-arm64" .
           cd dist && sha256sum * > checksums.txt
       - name: Create release if needed and upload binaries
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/* --clobber
