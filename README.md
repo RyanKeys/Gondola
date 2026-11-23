@@ -33,6 +33,7 @@ Modes are configuration, not code — define your own in `dispatcher.yaml`.
 - **Roles, not just models** — clients ask for `brain`, `heavy`, `coder`, `utility`; each role can name a different model per machine
 - **Pass-through, always** — an explicitly named model is never silently substituted (see below)
 - **Wake-on-LAN** — asleep machines are woken when the mode sends them work
+- **Wake-ahead** — switching modes wakes the machines the new mode uses, before the first request arrives
 - **Discovery** — `gondola discover` scans your LAN and writes a starter config
 - **A web console** — modes, live activity, and structured settings at `/ui`
 - **One static binary** — no runtime dependencies; Ollama- and OpenAI-compatible endpoints
@@ -119,10 +120,11 @@ Or over HTTP: `GET|POST /mode`, `GET /modes`, `GET /health`.
 
 ## Endpoints
 
-Ollama-native: `POST /api/chat`, `POST /api/generate`, `POST /api/show`,
+Ollama-native: `POST /api/chat`, `POST /api/generate`, `POST /api/embed`,
+`POST /api/embeddings`, `POST /api/show`,
 `GET /api/ps`, `GET /api/tags` (merged from all reachable backends,
 without waking any), `GET /api/version`. OpenAI-compatible:
-`POST /v1/chat/completions`, `GET /v1/models` (both backends' defaults,
+`POST /v1/chat/completions`, `POST /v1/embeddings`, `GET /v1/models` (both backends' defaults,
 backend aliases, and all role names). Streaming passes through as-is.
 
 Roles let clients ask for a job instead of a model — `brain`, `heavy`,

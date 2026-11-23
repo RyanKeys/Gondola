@@ -24,7 +24,7 @@ const activityCapacity = 300
 // activityEntry is one recorded routing or admin event.
 type activityEntry struct {
 	Time      time.Time `json:"time"`
-	Kind      string    `json:"kind"` // "route", "mode", "config"
+	Kind      string    `json:"kind"` // "route", "mode", "config", "wake"
 	Mode      string    `json:"mode,omitempty"`
 	Requested string    `json:"requested,omitempty"`
 	Served    string    `json:"served,omitempty"`

@@ -675,3 +675,27 @@ edit; pending flips when the file on disk diverges; the restart
 endpoint refuses an unloadable saved config and does not exec; the
 endpoint is token-gated. The exec itself is behind an injectable
 function so tests can observe it without re-executing.
+
+## 18. Wake-ahead
+
+When a mode is set explicitly (`POST /mode` or the console), the
+dispatcher immediately sends one Wake-on-LAN packet to each machine
+the new mode can route to — its default plus its role assignments —
+that is asleep and has a MAC configured, provided the mode allows
+waking. Machines already answering are left alone; machines the mode
+forbids waking are never touched. Wake-ahead does not wait for the
+machines to come up: requests still pass through `ensureUp`
+(section 5.2), which waits and retries as before. It does not run at
+startup or when a TTL expires into the default mode — only on an
+explicit switch, because the switch is the operator's statement of
+intent. Each wake-ahead is logged and recorded in the activity feed
+as kind `wake`.
+
+## 19. Embeddings endpoints
+
+`POST /api/embed`, `POST /api/embeddings`, and `POST /v1/embeddings`
+are proxied exactly like chat: the body's model field goes through
+the same resolution (section 6) — roles resolve, explicit models pass
+through untouched — and the response streams back as-is. Any Ollama
+or OpenAI-compatible client can use the dispatcher for retrieval
+workloads, not just generation.

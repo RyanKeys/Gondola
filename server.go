@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.5.0"
+const version = "0.6.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
@@ -47,9 +47,12 @@ func (d *Dispatcher) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/api/chat") })
 	mux.HandleFunc("POST /api/generate", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/api/generate") })
+	mux.HandleFunc("POST /api/embed", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/api/embed") })
+	mux.HandleFunc("POST /api/embeddings", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/api/embeddings") })
 	mux.HandleFunc("POST /api/show", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/api/show") })
 	mux.HandleFunc("GET /api/ps", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/api/ps") })
 	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/v1/chat/completions") })
+	mux.HandleFunc("POST /v1/embeddings", func(w http.ResponseWriter, r *http.Request) { d.proxy(w, r, "/v1/embeddings") })
 	mux.HandleFunc("GET /api/tags", d.handleTags)
 	mux.HandleFunc("GET /v1/models", d.handleV1Models)
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +111,7 @@ func (d *Dispatcher) handleModePost(w http.ResponseWriter, r *http.Request) {
 	}
 	d.logf("MODE set -> %s", body.Mode)
 	d.activity.add(activityEntry{Kind: "mode", Mode: body.Mode, Detail: "mode set via API"})
+	go d.wakeAhead(body.Mode)
 	writeJSON(w, http.StatusOK, map[string]any{"mode": body.Mode})
 }
 

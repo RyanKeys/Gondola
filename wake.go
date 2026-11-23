@@ -55,6 +55,57 @@ func sendMagic(mac string, broadcasts []string) error {
 	return nil
 }
 
+// sendMagicFn is sendMagic behind a variable so tests can observe
+// wake sends without emitting packets.
+var sendMagicFn = sendMagic
+
+// wakeTargets lists the backends a mode can route to: its default
+// plus every backend a role is assigned to, sorted for determinism.
+func wakeTargets(cfg *Config, mode ModeCfg) []string {
+	set := map[string]bool{mode.Default: true}
+	for _, backend := range mode.Roles {
+		set[backend] = true
+	}
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
+	}
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j] < out[i] {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return out
+}
+
+// wakeAhead sends one magic packet to each of the mode's machines
+// that is asleep, wakeable, and allowed to wake in this mode
+// (SPEC.md section 18). It runs when a mode is explicitly set, so
+// machines are warm before the first request arrives; it never runs
+// at startup or on a TTL fallback, and it does not wait for machines
+// to come up — requests still go through ensureUp as before.
+func (d *Dispatcher) wakeAhead(modeName string) {
+	mode, ok := d.cfg.Modes[modeName]
+	if !ok || !mode.Wake {
+		return
+	}
+	probe := &http.Client{Timeout: 2 * time.Second}
+	for _, name := range wakeTargets(d.cfg, mode) {
+		b := d.cfg.Backends[name]
+		if b.MAC == "" || reachable(probe, b.URL) {
+			continue
+		}
+		if err := sendMagicFn(b.MAC, b.WOLBroadcasts); err != nil {
+			d.logf("WAKE-AHEAD-FAIL backend=%s err=%v", name, err)
+			continue
+		}
+		d.logf("WAKE-AHEAD backend=%s mode=%s", name, modeName)
+		d.activity.add(activityEntry{Kind: "wake", Mode: modeName, Backend: name, Detail: "wake-ahead on mode switch"})
+	}
+}
+
 // waker coalesces wake attempts per backend.
 type waker struct {
 	mu    sync.Mutex
@@ -97,7 +148,7 @@ func (d *Dispatcher) ensureUp(name string, mode ModeCfg) bool {
 	lastSent := time.Time{}
 	for time.Now().Before(deadline) {
 		if time.Since(lastSent) >= 30*time.Second {
-			if err := sendMagic(b.MAC, b.WOLBroadcasts); err != nil {
+			if err := sendMagicFn(b.MAC, b.WOLBroadcasts); err != nil {
 				d.logf("WAKE-FAIL backend=%s err=%v", name, err)
 				return false
 			}
