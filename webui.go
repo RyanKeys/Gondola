@@ -23,17 +23,22 @@ const activityCapacity = 300
 
 // activityEntry is one recorded routing or admin event.
 type activityEntry struct {
-	Time      time.Time `json:"time"`
-	Kind      string    `json:"kind"` // "route", "mode", "config", "wake"
-	Mode      string    `json:"mode,omitempty"`
-	Requested string    `json:"requested,omitempty"`
-	Served    string    `json:"served,omitempty"`
-	Backend   string    `json:"backend,omitempty"`
-	Path      string    `json:"path,omitempty"`
-	Status    int       `json:"status,omitempty"`
-	Rewritten bool      `json:"rewritten,omitempty"`
-	Ms        int64     `json:"ms,omitempty"`
-	Detail    string    `json:"detail,omitempty"`
+	id              uint64
+	Time            time.Time `json:"time"`
+	Kind            string    `json:"kind"` // "route", "mode", "config", "wake"
+	Mode            string    `json:"mode,omitempty"`
+	Requested       string    `json:"requested,omitempty"`
+	Served          string    `json:"served,omitempty"`
+	Backend         string    `json:"backend,omitempty"`
+	Path            string    `json:"path,omitempty"`
+	Status          int       `json:"status,omitempty"`
+	Rewritten       bool      `json:"rewritten,omitempty"`
+	Ms              int64     `json:"ms,omitempty"`
+	Detail          string    `json:"detail,omitempty"`
+	EvalCount       int       `json:"eval_count,omitempty"`
+	PromptEvalCount int       `json:"prompt_eval_count,omitempty"`
+	TPS             float64   `json:"tok_per_sec,omitempty"`
+	TPSApprox       bool      `json:"tok_per_sec_approx,omitempty"`
 }
 
 // activityLog is a fixed-capacity ring of recent events, newest last.
@@ -41,20 +46,42 @@ type activityEntry struct {
 // resets when the process restarts.
 type activityLog struct {
 	mu      sync.Mutex
+	seq     uint64
 	entries []activityEntry
 }
 
 func newActivityLog() *activityLog { return &activityLog{} }
 
-func (a *activityLog) add(e activityEntry) {
+func (a *activityLog) add(e activityEntry) uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if e.Time.IsZero() {
 		e.Time = time.Now()
 	}
+	a.seq++
+	e.id = a.seq
 	a.entries = append(a.entries, e)
 	if len(a.entries) > activityCapacity {
 		a.entries = a.entries[len(a.entries)-activityCapacity:]
+	}
+	return e.id
+}
+
+// complete finalizes a route entry once its stream ends: the true
+// total duration replaces the time-to-headers recorded at add time,
+// and the observed throughput counters land (section 20).
+func (a *activityLog) complete(id uint64, totalMs int64, tp throughput) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i := range a.entries {
+		if a.entries[i].id == id {
+			a.entries[i].Ms = totalMs
+			a.entries[i].EvalCount = tp.evalCount
+			a.entries[i].PromptEvalCount = tp.promptEvalCount
+			a.entries[i].TPS = tp.tps
+			a.entries[i].TPSApprox = tp.approx
+			return
+		}
 	}
 }
 
@@ -92,7 +119,8 @@ func (d *Dispatcher) handleActivity(w http.ResponseWriter, r *http.Request) {
 	if !d.requireAdmin(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"entries": d.activity.recent(200)})
+	entries := d.activity.recent(200)
+	writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "throughput": throughputSummary(entries)})
 }
 
 // The admin token is the one secret a config file can hold. The editor

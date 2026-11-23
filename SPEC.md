@@ -699,3 +699,22 @@ the same resolution (section 6) — roles resolve, explicit models pass
 through untouched — and the response streams back as-is. Any Ollama
 or OpenAI-compatible client can use the dispatcher for retrieval
 workloads, not just generation.
+
+## 20. Live throughput
+
+The proxy observes response counters while streaming; the byte
+stream is never altered. Ollama-native responses carry `eval_count`
+and `eval_duration` in the final chunk, giving exact tokens per
+second. OpenAI-compatible responses report token usage but no
+durations, so their tok/s is estimated — completion tokens over the
+measured generation window (first byte to last byte; a single-flush
+response's window is its total time) —
+and marked approximate everywhere it appears, so production traffic
+is never dressed up as bench data. When a stream completes, its
+route entry gains `eval_count`, `prompt_eval_count`, `tok_per_sec`,
+and `tok_per_sec_approx`, and its `ms` becomes the total duration
+(an aborted request keeps its time-to-headers). `GET
+/admin/activity` also returns a throughput summary: average tok/s
+per backend and model over the current ring. Everything lives in
+the ring — a live view that resets on restart, not an audit trail
+(section 15).

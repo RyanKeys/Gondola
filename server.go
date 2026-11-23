@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.6.0"
+const version = "0.7.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
@@ -253,9 +253,10 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 		return
 	}
 	defer resp.Body.Close()
+	ttfbMs := time.Since(t0).Milliseconds()
 	d.logf("ROUTE mode=%s model=%s -> %s path=%s status=%d ttfb_ms=%d",
-		modeName, model, dec.Backend, path, resp.StatusCode, time.Since(t0).Milliseconds())
-	d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: resp.StatusCode, Rewritten: dec.Rewritten, Ms: time.Since(t0).Milliseconds()})
+		modeName, model, dec.Backend, path, resp.StatusCode, ttfbMs)
+	entryID := d.activity.add(activityEntry{Kind: "route", Mode: modeName, Requested: model, Served: dec.ServedModel, Backend: dec.Backend, Path: path, Status: resp.StatusCode, Rewritten: dec.Rewritten, Ms: ttfbMs})
 	for k, vs := range resp.Header {
 		lk := strings.ToLower(k)
 		if lk == "content-length" || lk == "transfer-encoding" || lk == "connection" {
@@ -267,6 +268,8 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 	}
 	w.WriteHeader(resp.StatusCode)
 	flusher, _ := w.(http.Flusher)
+	tail := &tailBuf{max: 64 * 1024}
+	firstByteMs := int64(-1)
 	buf := make([]byte, 32*1024)
 	for {
 		n, rerr := resp.Body.Read(buf)
@@ -274,11 +277,17 @@ func (d *Dispatcher) proxy(w http.ResponseWriter, r *http.Request, path string) 
 			if _, werr := w.Write(buf[:n]); werr != nil {
 				return
 			}
+			if firstByteMs < 0 {
+				firstByteMs = time.Since(t0).Milliseconds()
+			}
+			tail.Write(buf[:n])
 			if flusher != nil {
 				flusher.Flush()
 			}
 		}
 		if rerr != nil {
+			totalMs := time.Since(t0).Milliseconds()
+			d.activity.complete(entryID, totalMs, observeThroughput(path, tail.Bytes(), totalMs, firstByteMs))
 			return
 		}
 	}
