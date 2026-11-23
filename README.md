@@ -11,8 +11,9 @@
 </p>
 
 <p align="center">
+  <img src="https://github.com/RyanKeys/Gondola/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <img src="https://img.shields.io/github/v/release/RyanKeys/Gondola" alt="Latest release">
   <img src="https://img.shields.io/badge/go-1.24-00ADD8" alt="Go 1.24">
-  <img src="https://img.shields.io/badge/version-0.5.0-informational" alt="Version 0.5.0">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
 </p>
 
@@ -39,6 +40,33 @@ Modes are configuration, not code — define your own in `dispatcher.yaml`.
 Full design: [SPEC.md](SPEC.md). The Python prototype this replaces
 lives in [prototype-python/](prototype-python/).
 
+## Why gondola
+
+Two problems show up as soon as a second machine runs Ollama.
+
+The first is policy. Which machine *should* answer depends on where
+you are and what you are doing: the always-on server is fine until you
+leave the house, the gaming PC is faster but should not be woken for
+work the server handles, and a benchmark is meaningless if requests
+quietly land on whichever machine felt like it. Gondola makes that
+policy explicit and switchable — a mode states which machines serve,
+which are ignored, and which may be woken, and switching modes is the
+whole control surface.
+
+The second is honesty. A router that silently substitutes a different
+model when the requested one is missing makes every measurement
+downstream of it unreliable. Gondola's rule is pass-through: a named
+model is requested exactly, or the backend's own error comes back.
+The rewrites that do exist are deliberate, documented, and logged.
+
+|  | **gondola** | **LiteLLM** | **Ollama alone** |
+|---|---|---|---|
+| Built for | a handful of your own machines on a LAN | many models and providers, mostly cloud | a single machine |
+| You route by | modes and roles — "at home the server takes it; the big GPU only for heavy work" | model names, API keys, budgets, fallbacks | whichever model you name |
+| A missing model | the backend's 404, returned as-is | a configured fallback serves instead | Ollama's 404 |
+| Wakes a sleeping machine | yes, when the mode allows | no | no |
+| You run | one static binary and a YAML file | a Python service | nothing extra |
+
 ## Console
 
 A running gondola serves a small web console at `/ui`: switch modes,
@@ -48,8 +76,10 @@ and whether a rewrite applied), and change settings through
 structured controls — including renaming a device, which rewrites
 every mode and role that references it. Settings saves are validated
 through the real loader before they touch disk, keep a `.bak` of the
-previous file, and apply on restart; a raw config editor remains
-available behind an Advanced section as an escape hatch. When an
+previous file, and apply on restart — when a save leaves the running
+config behind, the console says so and offers the restart itself.
+A raw config editor remains available behind an Advanced section as
+an escape hatch. When an
 admin token is configured, the console's data endpoints require it;
 the token itself is never shown in the editor.
 
