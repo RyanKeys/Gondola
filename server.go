@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "0.4.3"
+const version = "0.5.0"
 
 // Dispatcher is the running proxy.
 type Dispatcher struct {
@@ -66,6 +66,7 @@ func (d *Dispatcher) Routes() http.Handler {
 	mux.HandleFunc("PUT /admin/config", d.handleConfigPut)
 	mux.HandleFunc("GET /admin/settings", d.handleSettingsGet)
 	mux.HandleFunc("PUT /admin/settings", d.handleSettingsPut)
+	mux.HandleFunc("POST /admin/restart", d.handleRestart)
 	return mux
 }
 

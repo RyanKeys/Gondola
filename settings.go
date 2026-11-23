@@ -299,12 +299,13 @@ func (d *Dispatcher) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		infos[name] = describeMode(saved, name)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"path":         d.cfgPath,
-		"settings":     docFromConfig(saved),
-		"models":       models,
-		"unused":       unused,
-		"mode_info":    infos,
-		"restart_note": "Settings edit the saved config; the running dispatcher applies them on restart.",
+		"path":            d.cfgPath,
+		"settings":        docFromConfig(saved),
+		"models":          models,
+		"unused":          unused,
+		"mode_info":       infos,
+		"restart_pending": configFingerprint(saved) != configFingerprint(d.cfg),
+		"restart_note":    "Settings edit the saved config; the running dispatcher applies them on restart.",
 	})
 }
 

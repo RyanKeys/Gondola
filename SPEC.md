@@ -630,3 +630,48 @@ every device, and shows it wherever a mode is displayed or edited:
 The classification is computed server-side from the config and served
 with the settings and modes payloads, so every client states the same
 truth; the page never re-derives routing logic in JavaScript.
+
+## 17. Applying saved settings
+
+The console edits the saved config; the running dispatcher serves the
+config it started with. This section closes that gap.
+
+### 17.1 Restart-pending detection
+
+The server fingerprints a config as the SHA-256 of the canonical JSON
+of its settings document (section 16) plus the admin token. Canonical
+JSON makes the fingerprint immune to file formatting: only a real
+change — a model, a mode, a rename, a token rotation — can differ.
+`GET /admin/settings` reports `restart_pending`, true when the saved
+config's fingerprint differs from the running config's.
+
+### 17.2 Restart endpoint
+
+`POST /admin/restart` (admin-gated, section 10) applies the saved
+config:
+
+1. The saved config is loaded through the real loader. If it does not
+   load, the endpoint answers 400 and nothing happens — a config that
+   would fail at startup can never take the dispatcher down.
+2. Otherwise it answers 200 and, after a brief delay to let the
+   response reach the client, re-executes the process in place:
+   `syscall.Exec` with the same binary, arguments, and environment.
+   The PID is unchanged, so in the Docker deployment (the dispatcher
+   is the container's PID 1) the container itself never restarts.
+3. The current mode survives: it lives in the state file (section 8),
+   which the new process image reads at startup like any other start.
+
+### 17.3 Console behaviour
+
+The banner appears whenever `restart_pending` is true — on page load
+and immediately after any save (structured or raw) — with a restart
+button. Clicking it calls the endpoint, polls `/health` until the
+dispatcher answers again, and reloads the page.
+
+### 17.4 Tests
+
+The fingerprint is stable across formatting and changes on any real
+edit; pending flips when the file on disk diverges; the restart
+endpoint refuses an unloadable saved config and does not exec; the
+endpoint is token-gated. The exec itself is behind an injectable
+function so tests can observe it without re-executing.

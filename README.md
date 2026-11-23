@@ -12,7 +12,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.24-00ADD8" alt="Go 1.24">
-  <img src="https://img.shields.io/badge/version-0.4.3-informational" alt="Version 0.4.3">
+  <img src="https://img.shields.io/badge/version-0.5.0-informational" alt="Version 0.5.0">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
 </p>
 

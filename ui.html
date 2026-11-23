@@ -32,6 +32,8 @@
   .modepill strong { font-weight:650; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .banner { display:none; align-items:center; gap:12px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--amber); border-radius:12px; padding:12px 16px; margin:14px 0 0; }
+  .banner.show { display:flex; }
   button { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:9px;
            padding:10px 18px; font:inherit; font-size:14px; cursor:pointer; min-height:42px; }
   button:hover { border-color:var(--muted); }
@@ -95,6 +97,11 @@
     <span class="err">Admin token required:</span>
     <input type="password" id="token" placeholder="admin token">
     <button id="savetoken">Save token</button>
+  </div>
+
+  <div class="banner" id="restartbanner">
+    <span id="restarttext">Saved settings differ from the running config.</span>
+    <button class="primary" id="restartbtn">Restart gondola to apply</button>
   </div>
 
   <h2>Current mode — what it uses</h2>
@@ -243,10 +250,12 @@ function checkField(labelText, value) {
 const F = {}; // field registry: key -> getter
 function reg(key, inp, kind) { F[key] = () => kind === 'check' ? inp.checked : (kind === 'csv' ? inp.value.split(',').map(s => s.trim()).filter(Boolean) : inp.value); }
 
+function setRestartBanner(show) { $('restartbanner').classList.toggle('show', !!show); }
 async function loadSettings() {
   try {
     const data = await getJSON('/admin/settings');
     S = data.settings; SMODELS = data.models || {}; SUNUSED = data.unused || {};
+    setRestartBanner(data.restart_pending);
     renderSettings();
     $('setstatus').textContent = '';
   } catch (e) { $('setstatus').textContent = 'token required'; $('setstatus').className = 'err'; }
@@ -363,7 +372,7 @@ $('savesettings').onclick = async () => {
   $('setstatus').textContent = 'saving…'; $('setstatus').className = '';
   const r = await fetch('/admin/settings', {method:'PUT', headers:{'Content-Type':'application/json', ...headers()}, body: JSON.stringify(collectSettings())});
   const out = await r.json().catch(() => ({}));
-  if (r.ok) { $('setstatus').textContent = 'Saved. Restart gondola to apply.'; $('setstatus').className = 'ok'; loadSettings(); }
+  if (r.ok) { $('setstatus').textContent = 'Saved. Restart gondola to apply.'; $('setstatus').className = 'ok'; setRestartBanner(true); loadSettings(); }
   else { $('setstatus').textContent = 'Rejected: ' + (out.error || r.status); $('setstatus').className = 'err'; }
 };
 
@@ -381,8 +390,23 @@ $('savecfg').onclick = async () => {
   $('cfgstatus').textContent = 'saving…'; $('cfgstatus').className = '';
   const r = await fetch('/admin/config', {method:'PUT', headers:{'Content-Type':'application/json', ...headers()}, body: JSON.stringify({yaml: $('cfgyaml').value})});
   const out = await r.json().catch(() => ({}));
-  if (r.ok) { $('cfgstatus').textContent = 'Saved. Restart gondola to apply.'; $('cfgstatus').className = 'ok'; }
+  if (r.ok) { $('cfgstatus').textContent = 'Saved. Restart gondola to apply.'; $('cfgstatus').className = 'ok'; setRestartBanner(true); }
   else { $('cfgstatus').textContent = 'Rejected: ' + (out.error || r.status); $('cfgstatus').className = 'err'; }
+};
+
+$('restartbtn').onclick = async () => {
+  $('restartbtn').disabled = true;
+  $('restarttext').textContent = 'Restarting…';
+  try {
+    const r = await fetch('/admin/restart', {method:'POST', headers: headers()});
+    if (!r.ok) { const out = await r.json().catch(() => ({})); $('restarttext').textContent = 'Restart refused: ' + (out.error || r.status); $('restartbtn').disabled = false; return; }
+  } catch (e) { /* the connection may drop as the process re-executes; the poll below decides */ }
+  for (let i = 0; i < 40; i++) {
+    await new Promise(res => setTimeout(res, 1000));
+    try { const h = await fetch('/health'); if (h.ok) { location.reload(); return; } } catch (e) {}
+  }
+  $('restarttext').textContent = 'Restart was requested, but gondola did not answer within 40 seconds.';
+  $('restartbtn').disabled = false;
 };
 
 function refreshAll() { refreshStatus(); refreshActivity(); }
