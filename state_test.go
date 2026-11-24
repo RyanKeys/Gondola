@@ -59,3 +59,20 @@ func TestSetUnknownModeRejected(t *testing.T) {
 		t.Fatalf("want away, got %s", name)
 	}
 }
+
+func TestStateFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mode.json")
+	store := NewStateStore(path)
+	if err := store.Set("home"); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mode := fi.Mode()
+	if mode&0o777 != 0o600 {
+		t.Fatalf("want permissions 0600, got %04o", mode&0o777)
+	}
+}

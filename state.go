@@ -42,7 +42,7 @@ func (s *StateStore) Set(mode string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, raw, 0o644)
+	return os.WriteFile(s.path, raw, 0o600)
 }
 
 // ModeManager resolves the effective mode, applying TTL expiry.
