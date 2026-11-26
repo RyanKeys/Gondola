@@ -85,19 +85,27 @@ mode: at home they land on the always-on box; in an away mode they
 can land on the big GPU. An exact model name works too — it just
 pins you to that model wherever it lives.
 
-### 2. Switch strength mid-chat
+### 2. Choose the role at session start
 
-A Hermes session's model is fixed when the session starts, but you
-can switch it live:
+A Hermes session's model is fixed when the session starts. The `/model`
+command in the gateway and TUI does not take effect (verified on Hermes
+v0.23.3) — a session's model is locked once started.
 
-```text
-/model heavy     # this session now runs on the heavy role
-/model coder     # ...or the coder role
-/model brain     # ...and back
+Instead, choose the role when starting a session:
+
+```bash
+hermes -m coder    # start a session with the coder role
+hermes -m heavy    # ...or the heavy role
+hermes -m brain    # ...or the brain role
 ```
 
-Every later turn in that session requests the role you named, and
-gondola resolves it against the current mode.
+CLI one-shot runs take the same flag:
+
+```bash
+hermes -z "Summarize today's dispatcher log" -m coder
+```
+
+You can also set the default role in `config.yaml` as shown in section 1.
 
 ### 3. Let Hermes pick the strength per subtask
 
